@@ -6,3 +6,12 @@
 
 # PyCharm specific
 /.idea
+
+.vscode/
+
+build/
+
+*.egg-info
+*.so 
+lnInclude/
+__pycache__
