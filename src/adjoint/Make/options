@@ -46,4 +46,6 @@ LIB_LIBS = \
     -L$(PETSC_LIB) -lpetsc \
     $(shell mpicc -show | grep -o '\-L[^ ]*') \
     $(shell python3-config --ldflags) \
-    -fno-lto
+    -fno-lto \
+    -L$(FOAM_USER_LIBBIN) -lmixingPlane$(WM_CODI_AD_LIB_POSTFIX)
+    
