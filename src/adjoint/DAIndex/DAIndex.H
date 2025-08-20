@@ -103,6 +103,9 @@ public:
     /// local coupled boundary patch size
     label nLocalCoupledBFaces;
 
+    /// local field coupled boundary patch size. e.g. cyclicAMI, mixingPlane patch
+    label nLocalFieldCoupledBFaces;
+
     /** given a local boundary face index (starting with zero for the first boundary face, 
         and ends with the last boundary faces), return its boundary patchI, 
         e.g., for face index = 100, its patchI = 2
@@ -140,6 +143,9 @@ public:
     /// global coupled boundary face size
     label nGlobalCoupledBFaces;
 
+    /// global field coupled boundary face size
+    label nGlobalFieldCoupledBFaces;
+
     // adjoint sizes
     /// number of local adjoint states (including all cells and faces)
     label nLocalAdjointStates;
@@ -169,6 +175,7 @@ public:
     globalIndex globalCellVectorNumbering; // similar to globalCellNumbering but has 3 components per cell
     globalIndex globalFaceNumbering;
     globalIndex globalCoupledBFaceNumbering;
+    globalIndex globalFieldCoupledBFaceNumbering;    
     globalIndex globalObjFuncGeoNumbering;
     globalIndex globalXvNumbering;
     globalIndex globalVolScalarFieldNumbering;

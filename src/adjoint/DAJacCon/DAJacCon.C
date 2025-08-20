@@ -52,11 +52,17 @@ void DAJacCon::initializeStateBoundaryCon()
         NOTE: no need to call this function for partial derivatives that are not wrt states
     
     Output:
-        neiBFaceGlobalCompact_: neibough face global index for a given local boundary face
+        neiBFaceGlobalCompact_: neibough face global index for a given local boundary face (geometry coupled boundary)
 
-        stateBoundaryCon_: matrix to store boundary connectivity levels for state Jacobians
+        fieldNeiBFaceGlobalCompact_: neibough face global index for a given local boundary face (field coupled boundary e.g. cyclicAMI, mixingPlane)
 
-        stateBoundaryConID_: matrix to store boundary connectivity ID for state Jacobians
+        stateBoundaryCon_: matrix to store boundary connectivity levels for state Jacobians (geometry coupled boundary)
+
+        fieldStateBoundaryCon_: matrix to store boundary connectivity levels for state Jacobians (field coupled boundary)
+
+        stateBoundaryConID_: matrix to store boundary connectivity ID for state Jacobians (geometry coupled boundary)
+
+        fieldStateBoundaryConID_: matrix to store boundary connectivity ID for state Jacobians (field coupled boundary)      
     */
 
     // Calculate the boundary connectivity
@@ -66,10 +72,11 @@ void DAJacCon::initializeStateBoundaryCon()
     }
 
     this->calcNeiBFaceGlobalCompact(neiBFaceGlobalCompact_);
+    this->calcFieldNeiBFaceGlobalCompact(fieldNeiBFaceGlobalCompact_);
 
-    this->setupStateBoundaryCon(&stateBoundaryCon_);
+    this->setupStateBoundaryCon(&stateBoundaryCon_, &fieldStateBoundaryCon_);
 
-    this->setupStateBoundaryConID(&stateBoundaryConID_);
+    this->setupStateBoundaryConID(&stateBoundaryConID_, &fieldStateBoundaryConID_);
 
     wordList writeJacobians;
     daOption_.getAllOptions().readEntry<wordList>("writeJacobians", writeJacobians);
@@ -750,6 +757,131 @@ void DAJacCon::calcNeiBFaceGlobalCompact(labelList& neiBFaceGlobalCompact)
     return;
 }
 
+void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobalCompact)
+{
+    /*
+    Description:
+        This function calculates DAJacCon::fieldNeiBFaceGlobalCompact[bFaceI]. Here fieldneiBFaceGlobalCompact 
+        stores the global field coupled boundary face index for the face on the other side of the local 
+        processor boundary. bFaceI is the "compact" face index. bFaceI=0 for the first boundary face
+        filedNeiBFaceGlobalCompat.size() = nLocalBoundaryFaces
+        filedNeiBFaceGlobalCompact[bFaceI].size = 0 means it is not a field coupled face
+        NOTE: fieldneiBFaceGlobalCompact will be used to calculate the connectivity across processors
+        in DAJacCon::setupStateBoundaryCon
+
+    Output:
+        fieldNeiBFaceGlobalCompact: the global field coupled boundary face index for the face on the other 
+        side of the local processor boundary
+   
+    Example:
+        On proc0, filedNeiBFaceGlobalCompact[0] = {1024, 1025}, then we have the following:
+       
+                             localBFaceI = 0     <--proc0
+                      ---------------------------   coupled boundary face
+                    globalBFaceI=1024 globalBFaceI=1025   <--proc1   
+        Taken and modified from the extended stencil code in fvMesh
+        Swap the global boundary face index
+    */
+
+    const polyBoundaryMesh& patches = mesh_.boundaryMesh();
+    labelList fieldNeiBFaceGlobalCompactTemp;
+
+    fieldNeiBFaceGlobalCompact.setSize(daIndex_.nLocalBoundaryFaces);
+    fieldNeiBFaceGlobalCompactTemp.setSize(daIndex_.nLocalBoundaryFaces);
+
+    // initialize the list with size = 0, i.e., non filed coupled face
+    forAll(fieldNeiBFaceGlobalCompact, idx)
+    {
+        fieldNeiBFaceGlobalCompact[idx].setSize(0);
+    }
+    // initialize the list with -1, i.e., non filed coupled face
+    forAll(fieldNeiBFaceGlobalCompactTemp, idx)
+    {
+        fieldNeiBFaceGlobalCompactTemp[idx] = -1;
+    }
+
+
+    // loop over the patches and store the global indices
+    label counter = 0;
+
+    forAll(patches, patchI)
+    {
+        const polyPatch& pp = patches[patchI];
+
+        // get the start index of this patch in the global face list
+        label faceIStart = pp.start();
+
+        // check whether this face is field coupled (cyclicAMI or mixingPlane?)
+        if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            // For coupled faces set the global face index so that it can be
+            // swaped across the interface.
+            forAll(pp, i)
+            {
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                fieldNeiBFaceGlobalCompactTemp[bFaceI] = daIndex_.globalFieldCoupledBFaceNumbering.toGlobal(counter);
+                faceIStart++;
+                counter++;
+            }
+        }
+    }
+
+    /// loop over the patches and store the neighbour face
+    forAll(patches, patchI)
+    {
+        label faceIStart = patches[patchI].start();
+        
+        if (patches[patchI].type() == "cyclicAMI" or patches[patchI].type() == "mixingPlane")
+        {
+            if (patches[patchI].type() == "cyclicAMI")
+            {
+                const cyclicAMIPolyPatch& pp = refCast<const cyclicAMIPolyPatch>(patches[patchI]);
+
+                /// get neighbour face index 
+                label neiBFaceIStart = pp.neighbPatch().start();
+
+                /// check whether or not owner ? if onwer use srcAddress, else user tgtAddress
+                if (pp.owner())
+                {
+                    labelListList srcBFaceAddress = pp.AMI().srcAddress();
+                    forAll(srcBFaceAddress, srcBFacei)
+                    {
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + srcBFacei;   
+                        forAll(srcBFaceAddress[srcBFacei], neiBFacei)
+                        {
+                            label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + srcBFaceAddress[srcBFacei][neiBFacei];
+                            /// convert to global field coupled face index
+                            label globalNeiBFaceIndex = fieldNeiBFaceGlobalCompactTemp[neiBFaceI];
+                            fieldNeiBFaceGlobalCompact[bFaceI].append(globalNeiBFaceIndex);
+                        }
+                    }
+                }
+                else
+                {
+                    labelListList tgtBFaceAddress = pp.neighbPatch().AMI().tgtAddress();
+                    forAll(tgtBFaceAddress, tgtBFacei)
+                    {   
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + tgtBFacei;   
+                        forAll(tgtBFaceAddress[tgtBFacei], neiBFacei)
+                        {
+                            label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + tgtBFaceAddress[tgtBFacei][neiBFacei];
+                            /// convert to global field coupled face index
+                            label globalNeiBFaceIndex = fieldNeiBFaceGlobalCompactTemp[neiBFaceI];
+                            fieldNeiBFaceGlobalCompact[bFaceI].append(globalNeiBFaceIndex);
+                        }
+                    }                        
+                }
+            }
+            else if (patches[patchI].type() == "mixingPlane")
+            {
+                /// TODO: implement mixingplane boundary
+            }
+        }
+    }
+
+    return;
+}
+
 label DAJacCon::getLocalCoupledBFaceIndex(const label localFaceI) const
 {
     /*
@@ -797,7 +929,55 @@ label DAJacCon::getLocalCoupledBFaceIndex(const label localFaceI) const
     return -1;
 }
 
-void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
+label DAJacCon::getLocalFieldCoupledBFaceIndex(const label localFaceI) const
+{
+
+    /*
+    Description:
+        Calculate the index of the local field coupled boundary face (bRow). 
+    
+    Input:
+        localFaceI: The local face index. It is in a list of faces including all the
+        internal and boundary faces.
+
+    Output:
+        bRow: A list of faces starts with the first inter-processor face. 
+        See DAJacCon::globalBndNumbering_ for more details.
+    */    
+
+    label counter = 0;
+    forAll(mesh_.boundaryMesh(), patchI)
+    {
+        const polyPatch& pp = mesh_.boundaryMesh()[patchI];
+        // check whether this face is coupled (cyclic or processor?)
+        if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            // get the start index of this patch in the global face
+            // list and the size of this patch.
+            label faceStart = pp.start();
+            label patchSize = pp.size();
+            label faceEnd = faceStart + patchSize;
+            if (localFaceI >= faceStart && localFaceI < faceEnd)
+            {
+                // this face is on this patch, find the exact index
+                label countDelta = localFaceI - pp.start(); //-faceStart;
+                PetscInt bRow = counter + countDelta;
+                return bRow;
+            }
+            else
+            {
+                //increment the counter by patchSize
+                counter += patchSize;
+            }
+        }
+    }
+
+    // no match found
+    FatalErrorIn("getLocalFieldBndFaceIndex") << abort(FatalError);    
+    return -1;
+}
+
+void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBoundaryCon)
 {
     /*
     Description:
@@ -857,6 +1037,35 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
     MatSetOption(stateBoundaryConTmp, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(stateBoundaryConTmp);
     MatZeroEntries(stateBoundaryConTmp);
+
+    MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryCon);
+    MatSetSizes(
+        *fieldStateBoundaryCon,
+        daIndex_.nLocalFieldCoupledBFaces,
+        daIndex_.nLocalAdjointStates,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(*fieldStateBoundaryCon);
+    MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL, 1000, NULL);
+    MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL);
+    MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(*fieldStateBoundaryCon);
+    MatZeroEntries(*fieldStateBoundaryCon);
+
+    Mat fieldStateBoundaryConTmp;
+    MatCreate(PETSC_COMM_WORLD, &fieldStateBoundaryConTmp);
+    MatSetSizes(
+        fieldStateBoundaryConTmp,
+        daIndex_.nLocalFieldCoupledBFaces,
+        daIndex_.nLocalAdjointStates,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(fieldStateBoundaryConTmp);
+    MatMPIAIJSetPreallocation(fieldStateBoundaryConTmp, 1000, NULL, 1000, NULL);
+    MatSeqAIJSetPreallocation(fieldStateBoundaryConTmp, 1000, NULL);
+    MatSetOption(fieldStateBoundaryConTmp, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(fieldStateBoundaryConTmp);
+    MatZeroEntries(fieldStateBoundaryConTmp);
 
     // loop over the patches and set the boundary connnectivity
     // Add connectivity in reverse so that the nearer stencils take priority
@@ -922,12 +1131,65 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
                 }
             }
         }
+        // check whether this face is coupled (cyclicAMI or mixingPlane?)
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+                
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    // This cell is already a neighbour cell, so we need this plus two
+                    // more levels
+                    // Start with next to nearest neighbours
+                    forAll(mesh_.cellCells()[idxN], cellI)
+                    {
+                        label localCell = mesh_.cellCells()[idxN][cellI];
+                        forAll(daIndex_.adjStateNames, idxI)
+                        {
+                            word stateName = daIndex_.adjStateNames[idxI];
+                            if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                            {
+                                // Now add level 3 connectivity, add all vars except for
+                                // surfaceScalarStates
+                                this->addConMatNeighbourCells(
+                                    *fieldStateBoundaryCon,
+                                    gRow,
+                                    localCell,
+                                    stateName,
+                                    3.0);
+                                this->addConMatNeighbourCells(
+                                    fieldStateBoundaryConTmp,
+                                    gRow,
+                                    localCell,
+                                    stateName,
+                                    3.0);
+                            }
+                        }
+                    }
+                } 
+            }            
+        }
     }
     // NOTE: need to flush the value before assigning the next level
     MatAssemblyBegin(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
     MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+
+    // NOTE: need to flush the value before assigning the next level
+    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 con
     forAll(patches, patchI)
@@ -973,12 +1235,57 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
                 }
             }
         }
+        // check whether this face is coupled (cyclicAMI or mixingPlane?)
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    // now add the nearest neighbour cells, add all vars for level 2 except
+                    // for surfaceScalarStates
+                    forAll(daIndex_.adjStateNames, idxI)
+                    {
+                        word stateName = daIndex_.adjStateNames[idxI];
+                        if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                        {
+                            this->addConMatNeighbourCells(
+                                *fieldStateBoundaryCon,
+                                gRow,
+                                idxN,
+                                stateName,
+                                2.0);
+                            this->addConMatNeighbourCells(
+                                fieldStateBoundaryConTmp,
+                                gRow,
+                                idxN,
+                                stateName,
+                                2.0);
+                        }
+                    }
+                }
+            }            
+        }
     }
     // NOTE: need to flush the value before assigning the next level
     MatAssemblyBegin(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
     MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+
+    // NOTE: need to flush the value before assigning the next level
+    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // face con
     forAll(patches, patchI)
@@ -1019,12 +1326,52 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
                 }
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    // and add the surfaceScalarStates for idxN
+                    forAll(stateInfo_["surfaceScalarStates"], idxI)
+                    {
+                        word stateName = stateInfo_["surfaceScalarStates"][idxI];
+                        this->addConMatCellFaces(
+                            *fieldStateBoundaryCon,
+                            gRow,
+                            idxN,
+                            stateName,
+                            10.0); // for faces, its connectivity level is 10
+                        this->addConMatCellFaces(
+                            fieldStateBoundaryConTmp,
+                            gRow,
+                            idxN,
+                            stateName,
+                            10.0);
+                    }
+                }
+            }             
+        }
     }
     // NOTE: need to flush the value before assigning the next level
     MatAssemblyBegin(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
     MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+
+    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 1 con
     forAll(patches, patchI)
@@ -1068,10 +1415,51 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
                 }
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    // Add all the cell states for idxN
+                    forAll(daIndex_.adjStateNames, idxI)
+                    {
+                        word stateName = daIndex_.adjStateNames[idxI];
+                        if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                        {
+                            this->addConMatCell(
+                                *fieldStateBoundaryCon,
+                                gRow,
+                                idxN,
+                                stateName,
+                                1.0);
+                            this->addConMatCell(
+                                fieldStateBoundaryConTmp,
+                                gRow,
+                                idxN,
+                                stateName,
+                                1.0);
+                        }
+                    }
+                }
+            }            
+        }
     }
     // Now we can do the final assembly
     MatAssemblyBegin(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
+
+    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
 
     // Now repeat loop adding boundary connections from other procs using matrix
     // created in the first loop.
@@ -1117,10 +1505,48 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
                 }
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    // This cell is already a neighbour cell, so we need this plus two
+                    // more levels
+                    // Start with nearest neighbours
+                    forAll(mesh_.cellCells()[idxN], cellI)
+                    {
+                        label localCell = mesh_.cellCells()[idxN][cellI];
+                        labelList val1 = {3};
+                        // pass a zero list to add all states
+                        List<List<word>> connectedStates(0);
+                        this->addBoundaryFaceConnections(
+                            fieldStateBoundaryConTmp,
+                            gRow,
+                            localCell,
+                            val1,
+                            connectedStates,
+                            0);
+                    }
+                }
+            }            
+        }
     }
     // NOTE: need to flush the value before assigning the next level
     MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+
+    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 and 3 con
     forAll(patches, patchI)
@@ -1155,10 +1581,42 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
                     0);
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    // now add the neighbour cells
+                    labelList vals2 = {2, 3};
+                    // pass a zero list to add all states
+                    List<List<word>> connectedStates(0);
+                    this->addBoundaryFaceConnections(
+                        fieldStateBoundaryConTmp,
+                        gRow,
+                        idxN,
+                        vals2,
+                        connectedStates,
+                        0);
+                }
+            }            
+        }
     }
     // NOTE: need to flush the value before assigning the next level
     MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+
+    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 again, because the previous call will mess up level 2 con
     forAll(patches, patchI)
@@ -1193,20 +1651,54 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon)
                     0);
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    // now add the neighbour cells
+                    labelList vals1 = {2};
+                    // pass a zero list to add all states
+                    List<List<word>> connectedStates(0);
+                    this->addBoundaryFaceConnections(
+                        fieldStateBoundaryConTmp,
+                        gRow,
+                        idxN,
+                        vals1,
+                        connectedStates,
+                        0);
+                }
+            }            
+        }
     }
 
     MatAssemblyBegin(stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
 
+    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
+
     // the above repeat loop is not enough to cover all the stencil, we need to do more
-    this->combineStateBndCon(stateBoundaryCon, &stateBoundaryConTmp);
+    this->combineStateBndCon(stateBoundaryCon, &stateBoundaryConTmp, fieldStateBoundaryCon, &fieldStateBoundaryConTmp);
 
     return;
 }
 
 void DAJacCon::combineStateBndCon(
     Mat* stateBoundaryCon,
-    Mat* stateBoundaryConTmp)
+    Mat* stateBoundaryConTmp,
+    Mat* fieldStateBoundaryCon,
+    Mat* fieldStateBoundaryConTmp)
 {
     /*
     Description:
@@ -1252,6 +1744,22 @@ void DAJacCon::combineStateBndCon(
     MatSetUp(*stateBoundaryCon);
     MatZeroEntries(*stateBoundaryCon); // initialize with zeros
 
+    // Destroy and initialize stateBoundaryCon with zeros
+    MatDestroy(fieldStateBoundaryCon);
+    MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryCon);
+    MatSetSizes(
+        *fieldStateBoundaryCon,
+        daIndex_.nLocalFieldCoupledBFaces,
+        daIndex_.nLocalAdjointStates,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(*fieldStateBoundaryCon);
+    MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL, 1000, NULL);
+    MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL);
+    MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(*fieldStateBoundaryCon);
+    MatZeroEntries(*fieldStateBoundaryCon); // initialize with zeros
+
     // assign stateBoundaryConTmp to stateBoundaryCon
     PetscInt Istart, Iend;
     MatGetOwnershipRange(*stateBoundaryConTmp, &Istart, &Iend);
@@ -1269,8 +1777,24 @@ void DAJacCon::combineStateBndCon(
 
     MatDestroy(stateBoundaryConTmp);
 
+    MatGetOwnershipRange(*fieldStateBoundaryConTmp, &Istart, &Iend);
+    for (PetscInt i = Istart; i < Iend; i++)
+    {
+        MatGetRow(*fieldStateBoundaryConTmp, i, &nCols, &cols, &vals);
+        for (PetscInt j = 0; j < nCols; j++)
+        {
+            MatSetValue(*fieldStateBoundaryCon, i, cols[j], vals[j], INSERT_VALUES);
+        }
+        MatRestoreRow(*fieldStateBoundaryConTmp, i, &nCols, &cols, &vals);
+    }
+    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
+
+    MatDestroy(fieldStateBoundaryConTmp);   
+
     // copy ConMat to ConMatTmp for an extract loop
     MatConvert(*stateBoundaryCon, MATSAME, MAT_INITIAL_MATRIX, stateBoundaryConTmp);
+    MatConvert(*fieldStateBoundaryCon, MATSAME, MAT_INITIAL_MATRIX, fieldStateBoundaryConTmp);
 
     // We need to do another loop adding boundary connections from other procs using ConMat
     // this will add missing connectivity if the stateBoundaryCon stencil extends through
@@ -1316,9 +1840,41 @@ void DAJacCon::combineStateBndCon(
                 }
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+                label idxN = pFaceCells[faceI];
+                
+                forAll(gRows, gRowIdx)
+                {
+                    label gRow = gRows[gRowIdx];
+                    forAll(mesh_.cellCells()[idxN], cellI)
+                    {
+                        label localCell = mesh_.cellCells()[idxN][cellI];
+                        labelList val1 = {3};
+                        // pass a zero list to add all states
+                        List<List<word>> connectedStates(0);
+                        this->addBoundaryFaceConnections(
+                            *fieldStateBoundaryConTmp,
+                            gRow,
+                            localCell,
+                            val1,
+                            connectedStates,
+                            0);
+                    }
+                }
+            }             
+        }
     }
     MatAssemblyBegin(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+
+    MatAssemblyBegin(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2, 3 con
     forAll(patches, patchI)
@@ -1347,9 +1903,38 @@ void DAJacCon::combineStateBndCon(
                     0);
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+                label idxN = pFaceCells[faceI];
+
+                forAll(gRows, gRowIdx)
+                {   
+                    label gRow = gRows[gRowIdx];
+                    // now add the neighbour cells
+                    labelList vals2 = {2, 3};
+                    // pass a zero list to add all states
+                    List<List<word>> connectedStates(0);
+                    this->addBoundaryFaceConnections(
+                        *fieldStateBoundaryConTmp,
+                        gRow,
+                        idxN,
+                        vals2,
+                        connectedStates,
+                        0);
+                }
+            }            
+        }
     }
     MatAssemblyBegin(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+
+    MatAssemblyBegin(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 again, because the previous call will mess up level 2 con
     forAll(patches, patchI)
@@ -1378,9 +1963,38 @@ void DAJacCon::combineStateBndCon(
                     0);
             }
         }
+        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+                label idxN = pFaceCells[faceI];
+                
+                forAll(gRows, gRowIdx)
+                {   
+                    label gRow = gRows[gRowIdx];
+                    // now add the neighbour cells
+                    labelList vals1 = {2};
+                    // pass a zero list to add all states
+                    List<List<word>> connectedStates(0);
+                    this->addBoundaryFaceConnections(
+                        *fieldStateBoundaryConTmp,
+                        gRow,
+                        idxN,
+                        vals1,
+                        connectedStates,
+                        0);
+                }
+            }            
+        }
     }
     MatAssemblyBegin(*stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
+
+    MatAssemblyBegin(*fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
 
     // Now stateBoundaryConTmp will have all the missing stencil. However, it will also mess
     // up the existing stencil in stateBoundaryCon. So we need to do a check to make sure that
@@ -1400,6 +2014,7 @@ void DAJacCon::combineStateBndCon(
     MatSetOption(tmpMat, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(tmpMat);
     MatZeroEntries(tmpMat); // initialize with zeros
+    MatGetOwnershipRange(*stateBoundaryConTmp, &Istart, &Iend);
     for (PetscInt i = Istart; i < Iend; i++)
     {
         MatGetRow(*stateBoundaryCon, i, &nCols, &cols, &vals);
@@ -1437,10 +2052,66 @@ void DAJacCon::combineStateBndCon(
     MatDestroy(stateBoundaryConTmp);
     MatDestroy(&tmpMat);
 
+    // Now stateBoundaryConTmp will have all the missing stencil. However, it will also mess
+    // up the existing stencil in stateBoundaryCon. So we need to do a check to make sure that
+    // stateBoundaryConTmp only add stencil, not replacing any existing stencil in stateBoundaryCon.
+    // If anything in stateBoundaryCon is replaced, rollback the changes.
+    Mat tmpFieldMat; // create a temp mat
+    MatCreate(PETSC_COMM_WORLD, &tmpFieldMat);
+    MatSetSizes(
+        tmpFieldMat,
+        daIndex_.nLocalFieldCoupledBFaces,
+        daIndex_.nLocalAdjointStates,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(tmpFieldMat);
+    MatMPIAIJSetPreallocation(tmpFieldMat, 1000, NULL, 1000, NULL);
+    MatSeqAIJSetPreallocation(tmpFieldMat, 1000, NULL);
+    MatSetOption(tmpFieldMat, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(tmpFieldMat);
+    MatZeroEntries(tmpFieldMat); // initialize with zeros
+    MatGetOwnershipRange(*fieldStateBoundaryConTmp, &Istart, &Iend);
+    for (PetscInt i = Istart; i < Iend; i++)
+    {
+        MatGetRow(*fieldStateBoundaryCon, i, &nCols, &cols, &vals);
+        MatGetRow(*fieldStateBoundaryConTmp, i, &nCols1, &cols1, &vals1);
+        for (PetscInt j = 0; j < nCols1; j++)
+        {
+            // for each col in stateBoundaryConTmp, we need to check if there are any existing
+            // values for the same col in stateBoundaryCon. If yes, assign the val from
+            // stateBoundaryCon instead of stateBoundaryConTmp
+            PetscScalar newVal = vals1[j];
+            PetscInt newCol = cols1[j];
+            for (PetscInt k = 0; k < nCols; k++)
+            {
+                if (int(cols[k]) == int(cols1[j]))
+                {
+                    newVal = vals[k];
+                    newCol = cols[k];
+                    break;
+                }
+            }
+            MatSetValue(tmpFieldMat, i, newCol, newVal, INSERT_VALUES);
+        }
+        MatRestoreRow(*fieldStateBoundaryCon, i, &nCols, &cols, &vals);
+        MatRestoreRow(*fieldStateBoundaryConTmp, i, &nCols1, &cols1, &vals1);
+    }
+    MatAssemblyBegin(tmpFieldMat, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(tmpFieldMat, MAT_FINAL_ASSEMBLY);
+
+    // copy ConMat to ConMatTmp
+    MatDestroy(fieldStateBoundaryCon);
+    MatConvert(tmpFieldMat, MATSAME, MAT_INITIAL_MATRIX, fieldStateBoundaryCon);
+    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
+
+    MatDestroy(fieldStateBoundaryConTmp);
+    MatDestroy(&tmpFieldMat);
+
     return;
 }
 
-void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID)
+void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateBoundaryConID)
 {
     /*
     Description:
@@ -1480,6 +2151,21 @@ void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID)
     MatSetUp(*stateBoundaryConID);
     MatZeroEntries(*stateBoundaryConID);
 
+    // initialize
+    MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryConID);
+    MatSetSizes(
+        *fieldStateBoundaryConID,
+        daIndex_.nLocalFieldCoupledBFaces,
+        daIndex_.nLocalAdjointStates,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(*fieldStateBoundaryConID);
+    MatMPIAIJSetPreallocation(*fieldStateBoundaryConID, 1000, NULL, 1000, NULL);
+    MatSeqAIJSetPreallocation(*fieldStateBoundaryConID, 1000, NULL);
+    MatSetOption(*fieldStateBoundaryConID, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(*fieldStateBoundaryConID);
+    MatZeroEntries(*fieldStateBoundaryConID);    
+
     MatGetOwnershipRange(stateBoundaryCon_, &Istart, &Iend);
 
     // set stateBoundaryConID_ based on stateBoundaryCon_ and adjStateID4GlobalAdjIdx
@@ -1498,10 +2184,31 @@ void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID)
         MatRestoreRow(stateBoundaryCon_, i, &nCols, &cols, &vals);
     }
 
+    MatGetOwnershipRange(fieldStateBoundaryCon_, &Istart, &Iend);
+
+    // set stateBoundaryConID_ based on stateBoundaryCon_ and adjStateID4GlobalAdjIdx
+    for (PetscInt i = Istart; i < Iend; i++)
+    {
+        MatGetRow(fieldStateBoundaryCon_, i, &nCols, &cols, &vals);
+        for (PetscInt j = 0; j < nCols; j++)
+        {
+            if (!DAUtility::isValueCloseToRef(vals[j], 0.0))
+            {
+                colI = cols[j];
+                valIn = adjStateID4GlobalAdjIdx[colI];
+                MatSetValue(*fieldStateBoundaryConID, i, colI, valIn, INSERT_VALUES);
+            }
+        }
+        MatRestoreRow(fieldStateBoundaryCon_, i, &nCols, &cols, &vals);
+    }
+
     adjStateID4GlobalAdjIdx.clear();
 
     MatAssemblyBegin(*stateBoundaryConID, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryConID, MAT_FINAL_ASSEMBLY);
+
+    MatAssemblyBegin(*fieldStateBoundaryConID, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*fieldStateBoundaryConID, MAT_FINAL_ASSEMBLY);
 
     return;
 }
@@ -1813,18 +2520,35 @@ void DAJacCon::addBoundaryFaceConnections(
                 // use the boundary connectivity to figure out what is connected
                 // to this face for this level
 
-                // get bRow in boundaryCon for this face
-                bRow = this->getLocalCoupledBFaceIndex(currFace);
-
-                // get the global bRow index
-                bRowGlobal = daIndex_.globalCoupledBFaceNumbering.toGlobal(bRow);
-
-                // now extract the boundaryCon row
-                MatGetRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
-                if (connectedStates.size() != 0)
+                if (daIndex_.isCoupledFace[currFace] == 1)
                 {
-                    // check if we need to get stateID
-                    MatGetRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    // get bRow in boundaryCon for this face
+                    bRow = this->getLocalCoupledBFaceIndex(currFace);
+
+                    // get the global bRow index
+                    bRowGlobal = daIndex_.globalCoupledBFaceNumbering.toGlobal(bRow);
+
+                    // now extract the boundaryCon row
+                    MatGetRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    if (connectedStates.size() != 0)
+                    {
+                        // check if we need to get stateID
+                        MatGetRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    }
+                }
+                else if (daIndex_.isCoupledFace[currFace] == 2)
+                {
+                    bRow = this->getLocalFieldCoupledBFaceIndex(currFace);
+                    // get the global bRow index
+                    bRowGlobal = daIndex_.globalFieldCoupledBFaceNumbering.toGlobal(bRow);
+
+                    // now extract the boundaryCon row
+                    MatGetRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    if (connectedStates.size() != 0)
+                    {
+                        // check if we need to get stateID
+                        MatGetRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    }                      
                 }
 
                 // now loop over the row and set any column that match this level
@@ -1870,11 +2594,23 @@ void DAJacCon::addBoundaryFaceConnections(
                 }
 
                 // restore the row of the matrix
-                MatRestoreRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
-                if (connectedStates.size() != 0)
+                if (daIndex_.isCoupledFace[currFace] == 1)
                 {
-                    // check if we need to get stateID
-                    MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    MatRestoreRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    if (connectedStates.size() != 0)
+                    {
+                        // check if we need to get stateID
+                        MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    }
+                }
+                else if (daIndex_.isCoupledFace[currFace] == 2)
+                {
+                    MatRestoreRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    if (connectedStates.size() != 0)
+                    {
+                        // check if we need to get stateID
+                        MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    }                    
                 }
             }
         }

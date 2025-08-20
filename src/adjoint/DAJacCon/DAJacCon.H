@@ -22,6 +22,7 @@
 #include "DAFunction.H"
 #include "DAColoring.H"
 #include "DAField.H"
+#include "labelList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -69,12 +70,19 @@ protected:
 
     /// matrix to store boundary connectivity levels for state Jacobians
     Mat stateBoundaryCon_;
+    /// matrix to store field boundary connectivity levels for state Jacobians
+    Mat fieldStateBoundaryCon_;
 
     /// matrix to store boundary connectivity ID for state Jacobians
     Mat stateBoundaryConID_;
+    /// matrix to store field boundary connectivity ID for state Jacobians
+    Mat fieldStateBoundaryConID_;
 
     /// neibough face global index for a given local boundary face
+    ///     for coupled boundary    
     labelList neiBFaceGlobalCompact_;
+    ///     for field coupled boundary e.g. cyclicAMI, mixingPlane
+    labelListList fieldNeiBFaceGlobalCompact_;
 
     /// Jacobian connectivity mat
     Mat jacCon_;
@@ -98,15 +106,19 @@ protected:
 
     /// calculate DAJacCon::neiBFaceGlobalCompact_
     void calcNeiBFaceGlobalCompact(labelList& neiBFaceGlobalCompact);
+    /// calculate DAJacCon::fieldNeiBFaceGlobalCompact_
+    void calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobalCompact);
 
     /// given a local face index, return the local index of the coupled boundary face
     label getLocalCoupledBFaceIndex(const label localFaceI) const;
+    /// given a lolcal face index, reuturn the local index of the field coupled boundary face
+    label getLocalFieldCoupledBFaceIndex(const label localFaceI) const;
 
     /// calculate DAJacCon::stateBoundaryCon_
-    void setupStateBoundaryCon(Mat* stateBoundaryCon);
+    void setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBoundaryCon);
 
     /// calculate DAJacCon::stateBoundaryConID_
-    void setupStateBoundaryConID(Mat* stateBoundaryConID);
+    void setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateBoundaryConID);
 
     /// allocate connectedState matrix
     void createConnectionMat(Mat* connectedStates);
@@ -134,7 +146,9 @@ protected:
     /// combine stateBoundaryCon and stateBoundaryConTmp, this is to ensure including all connected states for parallel cases
     void combineStateBndCon(
         Mat* stateBoundaryCon,
-        Mat* stateBoundaryConTmp);
+        Mat* stateBoundaryConTmp,
+        Mat* fieldStateBoundaryCon,
+        Mat* fieldStateBoundaryConTmp);
 
     /// add val to the gRow row in conMat, the column indice are the state (given by stateName) for a given cellI
     void addConMatCell(
@@ -175,10 +189,13 @@ protected:
         // Need to clean up all the matrices
         MatDestroy(&jacCon_);
         MatDestroy(&stateBoundaryCon_);
+        MatDestroy(&fieldStateBoundaryCon_);        
         MatDestroy(&stateBoundaryConID_);
+        MatDestroy(&fieldStateBoundaryConID_);
         VecDestroy(&jacConColors_);
         stateInfo_.clear();
         neiBFaceGlobalCompact_.clear();
+        fieldNeiBFaceGlobalCompact_.clear();
     }
 
     /// check if there is special boundary conditions that need special treatment in jacCon_

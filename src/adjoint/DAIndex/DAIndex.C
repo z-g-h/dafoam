@@ -156,6 +156,7 @@ DAIndex::DAIndex(
     }
 
     nLocalCoupledBFaces = 0;
+    nLocalFieldCoupledBFaces = 0;
     label faceIdx = nLocalInternalFaces;
     forAll(mesh_.boundaryMesh(), patchI)
     {
@@ -167,12 +168,19 @@ DAIndex::DAIndex(
                 isCoupledFace[faceIdx] = 1;
                 nLocalCoupledBFaces++;
             }
+            else if (mesh_.boundaryMesh()[patchI].type() == "cyclicAMI" or mesh_.boundaryMesh()[patchI].type() == "mixingPlane")
+            {
+                isCoupledFace[faceIdx] = 2;
+                nLocalFieldCoupledBFaces++;                
+            }
             faceIdx++;
         }
     }
     // now initialize the gloalindex for bFace
     globalCoupledBFaceNumbering = DAUtility::genGlobalIndex(nLocalCoupledBFaces);
+    globalFieldCoupledBFaceNumbering = DAUtility::genGlobalIndex(nLocalFieldCoupledBFaces);
     nGlobalCoupledBFaces = globalCoupledBFaceNumbering.size();
+    nGlobalFieldCoupledBFaces = globalFieldCoupledBFaceNumbering.size();
 
     // calculate some local lists for indexing
     this->calcLocalIdxLists(adjStateName4LocalAdjIdx, cellIFaceI4LocalAdjIdx);
