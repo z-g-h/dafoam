@@ -24,7 +24,9 @@ EXE_INC = \
     -I$(PETSC_DIR)/include \
     -I$(PETSC_DIR)/$(PETSC_ARCH)/include \
     $(shell mpicc -show | grep -o '\-I[^ ]*') \
-    $(shell python3-config --includes) 
+    $(shell python3-config --includes) \
+    -I/home/dafoamuser/code-development/mixingPlane/lnInclude  
+    
     
 
 LIB_LIBS = \

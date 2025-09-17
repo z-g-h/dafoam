@@ -117,7 +117,7 @@ void DAJacCon::initializePetscVecs()
 
 void DAJacCon::setupJacobianConnections(
     Mat conMat,
-    Mat connections,
+    bufferConMap &connections,
     const PetscInt idxI)
 {
     /*
@@ -133,47 +133,16 @@ void DAJacCon::setupJacobianConnections(
         conMat: the connectivity mat to add
     */
 
-    PetscInt nCols;
-    const PetscInt* cols;
-    const PetscScalar* vals;
-
-    MatAssemblyBegin(connections, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(connections, MAT_FINAL_ASSEMBLY);
-
-    MatGetRow(connections, 0, &nCols, &cols, &vals);
-    MatSetValues(conMat, 1, &idxI, nCols, cols, vals, INSERT_VALUES);
-
-    // restore the row of the matrix
-    MatRestoreRow(connections, 0, &nCols, &cols, &vals);
-    MatDestroy(&connections);
-
-    return;
-}
-
-void DAJacCon::createConnectionMat(Mat* connectedStates)
-{
-    /*
-    Description:
-        Initialize a serial connectivity matrix connectedStates,
-        basically, it is one row of connectivity in DAJacCon::jacCon_
-    
-    Input/Output:
-        connectedStates: a 1 row matrix that will be used to store the connectivity
-    */
-
-    // create a local matrix to store this row's connectivity
-    MatCreateSeqAIJ(
-        PETSC_COMM_SELF,
-        1,
-        daIndex_.nGlobalAdjointStates,
-        2000,
-        NULL,
-        connectedStates);
-    //MatSetOption(*connectedStates, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(*connectedStates);
-
-    MatZeroEntries(*connectedStates);
-
+    auto it = connections.find(0);
+    if (it != connections.end())
+    {
+        for (const auto& cols : it->second)
+        {
+            PetscInt idxJ = cols.first;
+            PetscScalar val = cols.second;
+            MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
+        }
+    }
     return;
 }
 
@@ -309,7 +278,7 @@ void DAJacCon::setupJacCon(const dictionary& options)
 }
 
 void DAJacCon::addStateConnections(
-    Mat connections,
+    bufferConMap &connections,
     const label cellI,
     const label connectedLevelLocal,
     const wordList connectedStatesLocal,
@@ -674,7 +643,7 @@ void DAJacCon::addStateConnections(
 }
 
 void DAJacCon::setConnections(
-    Mat conMat,
+    bufferConMap &conMat,
     const label idx) const
 {
 
@@ -686,7 +655,7 @@ void DAJacCon::setConnections(
 
     PetscInt idxI = 0;
     PetscScalar v = 1;
-    MatSetValues(conMat, 1, &idxI, 1, &idx, &v, INSERT_VALUES);
+    conMat[idxI][idx] = v;
     return;
 }
 
@@ -874,7 +843,86 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
             }
             else if (patches[patchI].type() == "mixingPlane")
             {
-                /// TODO: implement mixingplane boundary
+                const mixingPlanePolyPatch& pp = refCast<const mixingPlanePolyPatch>(patches[patchI]);
+                /// get neighbour face index 
+                label neiBFaceIStart = pp.neighbPatch().start();
+
+                if (pp.owner())
+                {
+                    /// collect srcAddress 
+                    const labelListList& masterProfileToPatchAddress = pp.MPI().masterProfileToPatchAddr();
+                    const labelListList& slavePatchToProfileAddress = pp.MPI().slavePatchToProfileAddr();
+                    labelListList srcAddress;
+                    srcAddress.setSize(masterProfileToPatchAddress.size());
+                    forAll(masterProfileToPatchAddress, masterFaceI)
+                    {   
+                        labelList masterProfileFaces = masterProfileToPatchAddress[masterFaceI];
+                        forAll(masterProfileFaces, masterProfileFaceI)
+                        {
+                            label slaveProfileFaceI = masterProfileFaces[masterProfileFaceI];
+                            forAll(slavePatchToProfileAddress[slaveProfileFaceI], slaveFaceI)
+                            {
+                                // element check, if index has been in List, not add it.
+                                label idx = findIndex(srcAddress[masterFaceI], slavePatchToProfileAddress[slaveProfileFaceI][slaveFaceI]);
+                                // if idx == -1, this element is not in list, so add it to.
+                                if (idx == -1)
+                                {
+                                    srcAddress[masterFaceI].append(slavePatchToProfileAddress[slaveProfileFaceI][slaveFaceI]);
+                                }
+                            }
+                        }
+                    }
+                    /// construct fieldNeiBFaceGlobalCompact
+                    forAll(srcAddress, srcBFacei)
+                    {
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + srcBFacei;   
+                        forAll(srcAddress[srcBFacei], neiBFacei)
+                        {
+                            label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + srcAddress[srcBFacei][neiBFacei];
+                            /// convert to global field coupled face index
+                            label globalNeiBFaceIndex = fieldNeiBFaceGlobalCompactTemp[neiBFaceI];
+                            fieldNeiBFaceGlobalCompact[bFaceI].append(globalNeiBFaceIndex);
+                        }
+                    }
+                }
+                else
+                {
+                    /// collect tgtAddress 
+                    const labelListList& masterPatchToProfileAddress = pp.neighbPatch().MPI().masterPatchToProfileAddr();
+                    const labelListList& slaveProfileToPatchAddress = pp.neighbPatch().MPI().slaveProfileToPatchAddr(); 
+                    labelListList tgtAddress;   
+                    tgtAddress.setSize(slaveProfileToPatchAddress.size());
+                    forAll(slaveProfileToPatchAddress, slaveFaceI)
+                    {
+                        labelList slaveProfileFaces = slaveProfileToPatchAddress[slaveFaceI];
+                        forAll(slaveProfileFaces, slaveProfileFaceI)
+                        {
+                            label masterProfileFaceI = slaveProfileFaces[slaveProfileFaceI];
+                            forAll(masterPatchToProfileAddress[masterProfileFaceI], masterFaceI)
+                            {
+                                // element check, if index has been in List, not add it.
+                                label idx = findIndex(tgtAddress[slaveFaceI], masterPatchToProfileAddress[masterProfileFaceI][masterFaceI]);
+                                // if idx == -1, this element is not in list, so add it to.
+                                if (idx == -1)
+                                {
+                                    tgtAddress[slaveFaceI].append(masterPatchToProfileAddress[masterProfileFaceI][masterFaceI]);
+                                }
+                            }
+                        }
+                    }
+                    /// construct fieldNeiBFaceGlobalCompact
+                    forAll(tgtAddress, tgtBFacei)
+                    {   
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + tgtBFacei;   
+                        forAll(tgtAddress[tgtBFacei], neiBFacei)
+                        {
+                            label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + tgtAddress[tgtBFacei][neiBFacei];
+                            /// convert to global field coupled face index
+                            label globalNeiBFaceIndex = fieldNeiBFaceGlobalCompactTemp[neiBFaceI];
+                            fieldNeiBFaceGlobalCompact[bFaceI].append(globalNeiBFaceIndex);
+                        }
+                    }
+                }
             }
         }
     }
@@ -1009,63 +1057,9 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
            
     */
 
-    MatCreate(PETSC_COMM_WORLD, stateBoundaryCon);
-    MatSetSizes(
-        *stateBoundaryCon,
-        daIndex_.nLocalCoupledBFaces,
-        daIndex_.nLocalAdjointStates,
-        PETSC_DETERMINE,
-        PETSC_DETERMINE);
-    MatSetFromOptions(*stateBoundaryCon);
-    MatMPIAIJSetPreallocation(*stateBoundaryCon, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(*stateBoundaryCon, 1000, NULL);
-    MatSetOption(*stateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(*stateBoundaryCon);
-    MatZeroEntries(*stateBoundaryCon);
-
-    Mat stateBoundaryConTmp;
-    MatCreate(PETSC_COMM_WORLD, &stateBoundaryConTmp);
-    MatSetSizes(
-        stateBoundaryConTmp,
-        daIndex_.nLocalCoupledBFaces,
-        daIndex_.nLocalAdjointStates,
-        PETSC_DETERMINE,
-        PETSC_DETERMINE);
-    MatSetFromOptions(stateBoundaryConTmp);
-    MatMPIAIJSetPreallocation(stateBoundaryConTmp, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(stateBoundaryConTmp, 1000, NULL);
-    MatSetOption(stateBoundaryConTmp, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(stateBoundaryConTmp);
-    MatZeroEntries(stateBoundaryConTmp);
-
-    MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryCon);
-    MatSetSizes(
-        *fieldStateBoundaryCon,
-        daIndex_.nLocalFieldCoupledBFaces,
-        daIndex_.nLocalAdjointStates,
-        PETSC_DETERMINE,
-        PETSC_DETERMINE);
-    MatSetFromOptions(*fieldStateBoundaryCon);
-    MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL);
-    MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(*fieldStateBoundaryCon);
-    MatZeroEntries(*fieldStateBoundaryCon);
-
-    Mat fieldStateBoundaryConTmp;
-    MatCreate(PETSC_COMM_WORLD, &fieldStateBoundaryConTmp);
-    MatSetSizes(
-        fieldStateBoundaryConTmp,
-        daIndex_.nLocalFieldCoupledBFaces,
-        daIndex_.nLocalAdjointStates,
-        PETSC_DETERMINE,
-        PETSC_DETERMINE);
-    MatSetFromOptions(fieldStateBoundaryConTmp);
-    MatMPIAIJSetPreallocation(fieldStateBoundaryConTmp, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(fieldStateBoundaryConTmp, 1000, NULL);
-    MatSetOption(fieldStateBoundaryConTmp, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(fieldStateBoundaryConTmp);
-    MatZeroEntries(fieldStateBoundaryConTmp);
+    // buffer to store the values before putting them into the matrix
+    bufferConMap stateBoundaryCon_map_tmp;
+    bufferConMap fieldStateBoundaryCon_map_tmp;
 
     // loop over the patches and set the boundary connnectivity
     // Add connectivity in reverse so that the nearer stencils take priority
@@ -1115,13 +1109,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                             // Now add level 3 connectivity, add all vars except for
                             // surfaceScalarStates
                             this->addConMatNeighbourCells(
-                                *stateBoundaryCon,
-                                gRow,
-                                localCell,
-                                stateName,
-                                3.0);
-                            this->addConMatNeighbourCells(
-                                stateBoundaryConTmp,
+                                stateBoundaryCon_map_tmp,
                                 gRow,
                                 localCell,
                                 stateName,
@@ -1144,52 +1132,31 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
                 
-                forAll(gRows, gRowIdx)
+                // This cell is already a neighbour cell, so we need this plus two
+                // more levels
+                // Start with next to nearest neighbours
+                forAll(mesh_.cellCells()[idxN], cellI)
                 {
-                    label gRow = gRows[gRowIdx];
-                    // This cell is already a neighbour cell, so we need this plus two
-                    // more levels
-                    // Start with next to nearest neighbours
-                    forAll(mesh_.cellCells()[idxN], cellI)
+                    label localCell = mesh_.cellCells()[idxN][cellI];
+                    forAll(daIndex_.adjStateNames, idxI)
                     {
-                        label localCell = mesh_.cellCells()[idxN][cellI];
-                        forAll(daIndex_.adjStateNames, idxI)
+                        word stateName = daIndex_.adjStateNames[idxI];
+                        if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
                         {
-                            word stateName = daIndex_.adjStateNames[idxI];
-                            if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
-                            {
-                                // Now add level 3 connectivity, add all vars except for
-                                // surfaceScalarStates
-                                this->addConMatNeighbourCells(
-                                    *fieldStateBoundaryCon,
-                                    gRow,
-                                    localCell,
-                                    stateName,
-                                    3.0);
-                                this->addConMatNeighbourCells(
-                                    fieldStateBoundaryConTmp,
-                                    gRow,
-                                    localCell,
-                                    stateName,
-                                    3.0);
-                            }
+                            // Now add level 3 connectivity, add all vars except for
+                            // surfaceScalarStates
+                            this->addConMatNeighbourCells(
+                                fieldStateBoundaryCon_map_tmp,
+                                gRows,
+                                localCell,
+                                stateName,
+                                3.0);
                         }
                     }
-                } 
+                }
             }            
         }
     }
-    // NOTE: need to flush the value before assigning the next level
-    MatAssemblyBegin(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-
-    // NOTE: need to flush the value before assigning the next level
-    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 con
     forAll(patches, patchI)
@@ -1220,13 +1187,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                     if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
                     {
                         this->addConMatNeighbourCells(
-                            *stateBoundaryCon,
-                            gRow,
-                            idxN,
-                            stateName,
-                            2.0);
-                        this->addConMatNeighbourCells(
-                            stateBoundaryConTmp,
+                            stateBoundaryCon_map_tmp,
                             gRow,
                             idxN,
                             stateName,
@@ -1247,45 +1208,24 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
 
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
-                forAll(gRows, gRowIdx)
+                // now add the nearest neighbour cells, add all vars for level 2 except
+                // for surfaceScalarStates
+                forAll(daIndex_.adjStateNames, idxI)
                 {
-                    label gRow = gRows[gRowIdx];
-                    // now add the nearest neighbour cells, add all vars for level 2 except
-                    // for surfaceScalarStates
-                    forAll(daIndex_.adjStateNames, idxI)
+                    word stateName = daIndex_.adjStateNames[idxI];
+                    if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
                     {
-                        word stateName = daIndex_.adjStateNames[idxI];
-                        if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
-                        {
-                            this->addConMatNeighbourCells(
-                                *fieldStateBoundaryCon,
-                                gRow,
-                                idxN,
-                                stateName,
-                                2.0);
-                            this->addConMatNeighbourCells(
-                                fieldStateBoundaryConTmp,
-                                gRow,
-                                idxN,
-                                stateName,
-                                2.0);
-                        }
+                        this->addConMatNeighbourCells(
+                            fieldStateBoundaryCon_map_tmp,
+                            gRows,
+                            idxN,
+                            stateName,
+                            2.0);
                     }
                 }
             }            
         }
     }
-    // NOTE: need to flush the value before assigning the next level
-    MatAssemblyBegin(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-
-    // NOTE: need to flush the value before assigning the next level
-    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // face con
     forAll(patches, patchI)
@@ -1307,22 +1247,17 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
 
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
+
                 // and add the surfaceScalarStates for idxN
                 forAll(stateInfo_["surfaceScalarStates"], idxI)
                 {
                     word stateName = stateInfo_["surfaceScalarStates"][idxI];
                     this->addConMatCellFaces(
-                        *stateBoundaryCon,
+                        stateBoundaryCon_map_tmp,
                         gRow,
                         idxN,
                         stateName,
                         10.0); // for faces, its connectivity level is 10
-                    this->addConMatCellFaces(
-                        stateBoundaryConTmp,
-                        gRow,
-                        idxN,
-                        stateName,
-                        10.0);
                 }
             }
         }
@@ -1338,40 +1273,20 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
 
-                forAll(gRows, gRowIdx)
+                // and add the surfaceScalarStates for idxN
+                forAll(stateInfo_["surfaceScalarStates"], idxI)
                 {
-                    label gRow = gRows[gRowIdx];
-                    // and add the surfaceScalarStates for idxN
-                    forAll(stateInfo_["surfaceScalarStates"], idxI)
-                    {
-                        word stateName = stateInfo_["surfaceScalarStates"][idxI];
-                        this->addConMatCellFaces(
-                            *fieldStateBoundaryCon,
-                            gRow,
-                            idxN,
-                            stateName,
-                            10.0); // for faces, its connectivity level is 10
-                        this->addConMatCellFaces(
-                            fieldStateBoundaryConTmp,
-                            gRow,
-                            idxN,
-                            stateName,
-                            10.0);
-                    }
+                    word stateName = stateInfo_["surfaceScalarStates"][idxI];
+                    this->addConMatCellFaces(
+                        fieldStateBoundaryCon_map_tmp,
+                        gRows,
+                        idxN,
+                        stateName,
+                        10.0); // for faces, its connectivity level is 10
                 }
             }             
         }
     }
-    // NOTE: need to flush the value before assigning the next level
-    MatAssemblyBegin(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*stateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-
-    MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 1 con
     forAll(patches, patchI)
@@ -1400,13 +1315,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                     if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
                     {
                         this->addConMatCell(
-                            *stateBoundaryCon,
-                            gRow,
-                            idxN,
-                            stateName,
-                            1.0);
-                        this->addConMatCell(
-                            stateBoundaryConTmp,
+                            stateBoundaryCon_map_tmp,
                             gRow,
                             idxN,
                             stateName,
@@ -1427,36 +1336,79 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
 
-                forAll(gRows, gRowIdx)
+                // Add all the cell states for idxN
+                forAll(daIndex_.adjStateNames, idxI)
                 {
-                    label gRow = gRows[gRowIdx];
-                    // Add all the cell states for idxN
-                    forAll(daIndex_.adjStateNames, idxI)
+                    word stateName = daIndex_.adjStateNames[idxI];
+                    if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
                     {
-                        word stateName = daIndex_.adjStateNames[idxI];
-                        if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
-                        {
-                            this->addConMatCell(
-                                *fieldStateBoundaryCon,
-                                gRow,
-                                idxN,
-                                stateName,
-                                1.0);
-                            this->addConMatCell(
-                                fieldStateBoundaryConTmp,
-                                gRow,
-                                idxN,
-                                stateName,
-                                1.0);
-                        }
+                        this->addConMatCell(
+                            fieldStateBoundaryCon_map_tmp,
+                            gRows,
+                            idxN,
+                            stateName,
+                            1.0);
                     }
                 }
             }            
         }
     }
-    // Now we can do the final assembly
+
+    /// convert the map to petsc matrix
+    /// first create the stateBoundaryCon matrix
+    MatCreate(PETSC_COMM_WORLD, stateBoundaryCon);
+    MatSetSizes(
+        *stateBoundaryCon,
+        daIndex_.nLocalCoupledBFaces,
+        daIndex_.nLocalAdjointStates,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(*stateBoundaryCon);
+    /// prelocation
+    preallocateStateBndCon(daIndex_.nLocalCoupledBFaces,stateBoundaryCon, stateBoundaryCon_map_tmp);
+
+    MatSetOption(*stateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
+    MatSetUp(*stateBoundaryCon);
+    MatZeroEntries(*stateBoundaryCon);
+
+    /// insert values to stateBoundaryCon from stateBoundaryCon_map
+    for (auto &rowEntry : stateBoundaryCon_map_tmp) {
+        PetscInt row = rowEntry.first;
+        for (auto &colEntry : rowEntry.second) {
+            PetscInt col = colEntry.first;
+            PetscScalar val = colEntry.second;
+            MatSetValues(*stateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+        }
+    }
+
     MatAssemblyBegin(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
+
+    /// second create the fieldStateBoundaryCon matrix
+    MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryCon);
+    MatSetSizes(
+        *fieldStateBoundaryCon,
+        daIndex_.nLocalFieldCoupledBFaces,
+        daIndex_.nLocalAdjointStates,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(*fieldStateBoundaryCon);
+    /// prelocation
+    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces,fieldStateBoundaryCon, fieldStateBoundaryCon_map_tmp);
+
+    MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
+    MatSetUp(*fieldStateBoundaryCon);
+    MatZeroEntries(*fieldStateBoundaryCon);
+
+    /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
+    for (auto &rowEntry : fieldStateBoundaryCon_map_tmp) {
+        PetscInt row = rowEntry.first;
+        for (auto &colEntry : rowEntry.second) {
+            PetscInt col = colEntry.first;
+            PetscScalar val = colEntry.second;
+            MatSetValues(*fieldStateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+        }
+    }
 
     MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
@@ -1496,7 +1448,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                     // pass a zero list to add all states
                     List<List<word>> connectedStates(0);
                     this->addBoundaryFaceConnections(
-                        stateBoundaryConTmp,
+                        stateBoundaryCon_map_tmp,
                         gRow,
                         localCell,
                         val1,
@@ -1517,36 +1469,26 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
 
-                forAll(gRows, gRowIdx)
+                // This cell is already a neighbour cell, so we need this plus two
+                // more levels
+                // Start with nearest neighbours
+                forAll(mesh_.cellCells()[idxN], cellI)
                 {
-                    label gRow = gRows[gRowIdx];
-                    // This cell is already a neighbour cell, so we need this plus two
-                    // more levels
-                    // Start with nearest neighbours
-                    forAll(mesh_.cellCells()[idxN], cellI)
-                    {
-                        label localCell = mesh_.cellCells()[idxN][cellI];
-                        labelList val1 = {3};
-                        // pass a zero list to add all states
-                        List<List<word>> connectedStates(0);
-                        this->addBoundaryFaceConnections(
-                            fieldStateBoundaryConTmp,
-                            gRow,
-                            localCell,
-                            val1,
-                            connectedStates,
-                            0);
-                    }
+                    label localCell = mesh_.cellCells()[idxN][cellI];
+                    labelList val1 = {3};
+                    // pass a zero list to add all states
+                    List<List<word>> connectedStates(0);
+                    this->addBoundaryFaceConnections(
+                        fieldStateBoundaryCon_map_tmp,
+                        gRows,
+                        localCell,
+                        val1,
+                        connectedStates,
+                        0);
                 }
             }            
         }
     }
-    // NOTE: need to flush the value before assigning the next level
-    MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-
-    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 and 3 con
     forAll(patches, patchI)
@@ -1573,7 +1515,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // pass a zero list to add all states
                 List<List<word>> connectedStates(0);
                 this->addBoundaryFaceConnections(
-                    stateBoundaryConTmp,
+                    stateBoundaryCon_map_tmp,
                     gRow,
                     idxN,
                     vals2,
@@ -1593,30 +1535,20 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
 
-                forAll(gRows, gRowIdx)
-                {
-                    label gRow = gRows[gRowIdx];
-                    // now add the neighbour cells
-                    labelList vals2 = {2, 3};
-                    // pass a zero list to add all states
-                    List<List<word>> connectedStates(0);
-                    this->addBoundaryFaceConnections(
-                        fieldStateBoundaryConTmp,
-                        gRow,
-                        idxN,
-                        vals2,
-                        connectedStates,
-                        0);
-                }
+                // now add the neighbour cells
+                labelList vals2 = {2, 3};
+                // pass a zero list to add all states
+                List<List<word>> connectedStates(0);
+                this->addBoundaryFaceConnections(
+                    fieldStateBoundaryCon_map_tmp,
+                    gRows,
+                    idxN,
+                    vals2,
+                    connectedStates,
+                    0);
             }            
         }
     }
-    // NOTE: need to flush the value before assigning the next level
-    MatAssemblyBegin(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-
-    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 again, because the previous call will mess up level 2 con
     forAll(patches, patchI)
@@ -1643,7 +1575,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // pass a zero list to add all states
                 List<List<word>> connectedStates(0);
                 this->addBoundaryFaceConnections(
-                    stateBoundaryConTmp,
+                    stateBoundaryCon_map_tmp,
                     gRow,
                     idxN,
                     vals1,
@@ -1663,42 +1595,32 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
 
-                forAll(gRows, gRowIdx)
-                {
-                    label gRow = gRows[gRowIdx];
-                    // now add the neighbour cells
-                    labelList vals1 = {2};
-                    // pass a zero list to add all states
-                    List<List<word>> connectedStates(0);
-                    this->addBoundaryFaceConnections(
-                        fieldStateBoundaryConTmp,
-                        gRow,
-                        idxN,
-                        vals1,
-                        connectedStates,
-                        0);
-                }
+                // now add the neighbour cells
+                labelList vals1 = {2};
+                // pass a zero list to add all states
+                List<List<word>> connectedStates(0);
+                this->addBoundaryFaceConnections(
+                    fieldStateBoundaryCon_map_tmp,
+                    gRows,
+                    idxN,
+                    vals1,
+                    connectedStates,
+                    0);
             }            
         }
     }
 
-    MatAssemblyBegin(stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
-
-    MatAssemblyBegin(fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
-
     // the above repeat loop is not enough to cover all the stencil, we need to do more
-    this->combineStateBndCon(stateBoundaryCon, &stateBoundaryConTmp, fieldStateBoundaryCon, &fieldStateBoundaryConTmp);
-
+    this->combineStateBndCon(stateBoundaryCon, stateBoundaryCon_map_tmp, fieldStateBoundaryCon, fieldStateBoundaryCon_map_tmp);
+    
     return;
 }
 
 void DAJacCon::combineStateBndCon(
     Mat* stateBoundaryCon,
-    Mat* stateBoundaryConTmp,
+    bufferConMap &stateCon_map,
     Mat* fieldStateBoundaryCon,
-    Mat* fieldStateBoundaryConTmp)
+    bufferConMap &fieldStateCon_map)
 {
     /*
     Description:
@@ -1719,15 +1641,7 @@ void DAJacCon::combineStateBndCon(
     Input/Output:
         stateBoundaryCon, and stateBoundaryConTmp should come from DAJacCon::stateBoundaryCon
     */
-
-    PetscInt nCols;
-    const PetscInt* cols;
-    const PetscScalar* vals;
-
-    PetscInt nCols1;
-    const PetscInt* cols1;
-    const PetscScalar* vals1;
-
+    
     // Destroy and initialize stateBoundaryCon with zeros
     MatDestroy(stateBoundaryCon);
     MatCreate(PETSC_COMM_WORLD, stateBoundaryCon);
@@ -1738,13 +1652,33 @@ void DAJacCon::combineStateBndCon(
         PETSC_DETERMINE,
         PETSC_DETERMINE);
     MatSetFromOptions(*stateBoundaryCon);
-    MatMPIAIJSetPreallocation(*stateBoundaryCon, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(*stateBoundaryCon, 1000, NULL);
-    MatSetOption(*stateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+
+    /// preallocation stateBoundaryCon
+    preallocateStateBndCon(daIndex_.nLocalCoupledBFaces, stateBoundaryCon, stateCon_map);
+    // MatMPIAIJSetPreallocation(*stateBoundaryCon, 2000, NULL, 2000, NULL);
+    // MatSeqAIJSetPreallocation(*stateBoundaryCon, 2000, NULL);
+    MatSetOption(*stateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
     MatSetUp(*stateBoundaryCon);
     MatZeroEntries(*stateBoundaryCon); // initialize with zeros
 
-    // Destroy and initialize stateBoundaryCon with zeros
+    /// temporary store values to rollback for next unneeded repalce
+    bufferConMap stateCon_map_tmp;
+    /// insert values to stateBoundaryCon from stateBoundaryCon_map
+    for (auto &rowEntry : stateCon_map) 
+    {
+        PetscInt row = rowEntry.first;
+        for (auto &colEntry : rowEntry.second) 
+        {
+            PetscInt col = colEntry.first;
+            PetscScalar val = colEntry.second;
+            MatSetValues(*stateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            stateCon_map_tmp[row][col] = val;
+        }
+    }
+    MatAssemblyBegin(*stateBoundaryCon, MAT_FINAL_ASSEMBLY); 
+    MatAssemblyEnd(*stateBoundaryCon, MAT_FINAL_ASSEMBLY); 
+
+    // Destroy and initialize fieldStateBoundaryCon with zeros
     MatDestroy(fieldStateBoundaryCon);
     MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryCon);
     MatSetSizes(
@@ -1754,47 +1688,31 @@ void DAJacCon::combineStateBndCon(
         PETSC_DETERMINE,
         PETSC_DETERMINE);
     MatSetFromOptions(*fieldStateBoundaryCon);
-    MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 1000, NULL);
-    MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+
+    /// preallocation stateBoundaryCon
+    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces, fieldStateBoundaryCon,fieldStateCon_map);
+    // MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL, 2000, NULL);
+    // MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL);
+    MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
     MatSetUp(*fieldStateBoundaryCon);
     MatZeroEntries(*fieldStateBoundaryCon); // initialize with zeros
-
-    // assign stateBoundaryConTmp to stateBoundaryCon
-    PetscInt Istart, Iend;
-    MatGetOwnershipRange(*stateBoundaryConTmp, &Istart, &Iend);
-    for (PetscInt i = Istart; i < Iend; i++)
-    {
-        MatGetRow(*stateBoundaryConTmp, i, &nCols, &cols, &vals);
-        for (PetscInt j = 0; j < nCols; j++)
-        {
-            MatSetValue(*stateBoundaryCon, i, cols[j], vals[j], INSERT_VALUES);
+    
+    /// temporary store values to rollback for next unneeded repalce
+    bufferConMap fieldStateCon_map_tmp;
+    /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
+    for (auto &rowEntry : fieldStateCon_map) {
+        PetscInt row = rowEntry.first;
+        for (auto &colEntry : rowEntry.second) {
+            PetscInt col = colEntry.first;
+            PetscScalar val = colEntry.second;
+            MatSetValues(*fieldStateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            fieldStateCon_map_tmp[row][col] = val;
         }
-        MatRestoreRow(*stateBoundaryConTmp, i, &nCols, &cols, &vals);
     }
-    MatAssemblyBegin(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
 
-    MatDestroy(stateBoundaryConTmp);
-
-    MatGetOwnershipRange(*fieldStateBoundaryConTmp, &Istart, &Iend);
-    for (PetscInt i = Istart; i < Iend; i++)
-    {
-        MatGetRow(*fieldStateBoundaryConTmp, i, &nCols, &cols, &vals);
-        for (PetscInt j = 0; j < nCols; j++)
-        {
-            MatSetValue(*fieldStateBoundaryCon, i, cols[j], vals[j], INSERT_VALUES);
-        }
-        MatRestoreRow(*fieldStateBoundaryConTmp, i, &nCols, &cols, &vals);
-    }
     MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
 
-    MatDestroy(fieldStateBoundaryConTmp);   
-
-    // copy ConMat to ConMatTmp for an extract loop
-    MatConvert(*stateBoundaryCon, MATSAME, MAT_INITIAL_MATRIX, stateBoundaryConTmp);
-    MatConvert(*fieldStateBoundaryCon, MATSAME, MAT_INITIAL_MATRIX, fieldStateBoundaryConTmp);
 
     // We need to do another loop adding boundary connections from other procs using ConMat
     // this will add missing connectivity if the stateBoundaryCon stencil extends through
@@ -1831,7 +1749,7 @@ void DAJacCon::combineStateBndCon(
                     // pass a zero list to add all states
                     List<List<word>> connectedStates(0);
                     this->addBoundaryFaceConnections(
-                        *stateBoundaryConTmp,
+                        stateCon_map,
                         gRow,
                         localCell,
                         val1,
@@ -1849,32 +1767,23 @@ void DAJacCon::combineStateBndCon(
                 labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
                 label idxN = pFaceCells[faceI];
                 
-                forAll(gRows, gRowIdx)
+                forAll(mesh_.cellCells()[idxN], cellI)
                 {
-                    label gRow = gRows[gRowIdx];
-                    forAll(mesh_.cellCells()[idxN], cellI)
-                    {
-                        label localCell = mesh_.cellCells()[idxN][cellI];
-                        labelList val1 = {3};
-                        // pass a zero list to add all states
-                        List<List<word>> connectedStates(0);
-                        this->addBoundaryFaceConnections(
-                            *fieldStateBoundaryConTmp,
-                            gRow,
-                            localCell,
-                            val1,
-                            connectedStates,
-                            0);
-                    }
+                    label localCell = mesh_.cellCells()[idxN][cellI];
+                    labelList val1 = {3};
+                    // pass a zero list to add all states
+                    List<List<word>> connectedStates(0);
+                    this->addBoundaryFaceConnections(
+                        fieldStateCon_map,
+                        gRows,
+                        localCell,
+                        val1,
+                        connectedStates,
+                        0);
                 }
             }             
         }
     }
-    MatAssemblyBegin(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-
-    MatAssemblyBegin(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2, 3 con
     forAll(patches, patchI)
@@ -1895,7 +1804,7 @@ void DAJacCon::combineStateBndCon(
                 // pass a zero list to add all states
                 List<List<word>> connectedStates(0);
                 this->addBoundaryFaceConnections(
-                    *stateBoundaryConTmp,
+                    stateCon_map,
                     gRow,
                     idxN,
                     vals2,
@@ -1912,29 +1821,20 @@ void DAJacCon::combineStateBndCon(
                 labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
                 label idxN = pFaceCells[faceI];
 
-                forAll(gRows, gRowIdx)
-                {   
-                    label gRow = gRows[gRowIdx];
-                    // now add the neighbour cells
-                    labelList vals2 = {2, 3};
-                    // pass a zero list to add all states
-                    List<List<word>> connectedStates(0);
-                    this->addBoundaryFaceConnections(
-                        *fieldStateBoundaryConTmp,
-                        gRow,
-                        idxN,
-                        vals2,
-                        connectedStates,
-                        0);
-                }
+                // now add the neighbour cells
+                labelList vals2 = {2, 3};
+                // pass a zero list to add all states
+                List<List<word>> connectedStates(0);
+                this->addBoundaryFaceConnections(
+                    fieldStateCon_map,
+                    gRows,
+                    idxN,
+                    vals2,
+                    connectedStates,
+                    0);
             }            
         }
     }
-    MatAssemblyBegin(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*stateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-
-    MatAssemblyBegin(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
-    MatAssemblyEnd(*fieldStateBoundaryConTmp, MAT_FLUSH_ASSEMBLY);
 
     // level 2 again, because the previous call will mess up level 2 con
     forAll(patches, patchI)
@@ -1955,7 +1855,7 @@ void DAJacCon::combineStateBndCon(
                 // pass a zero list to add all states
                 List<List<word>> connectedStates(0);
                 this->addBoundaryFaceConnections(
-                    *stateBoundaryConTmp,
+                    stateCon_map,
                     gRow,
                     idxN,
                     vals1,
@@ -1972,143 +1872,392 @@ void DAJacCon::combineStateBndCon(
                 labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
                 label idxN = pFaceCells[faceI];
                 
-                forAll(gRows, gRowIdx)
-                {   
-                    label gRow = gRows[gRowIdx];
-                    // now add the neighbour cells
-                    labelList vals1 = {2};
-                    // pass a zero list to add all states
-                    List<List<word>> connectedStates(0);
-                    this->addBoundaryFaceConnections(
-                        *fieldStateBoundaryConTmp,
-                        gRow,
-                        idxN,
-                        vals1,
-                        connectedStates,
-                        0);
+                // now add the neighbour cells
+                labelList vals1 = {2};
+                // pass a zero list to add all states
+                List<List<word>> connectedStates(0);
+                this->addBoundaryFaceConnections(
+                    fieldStateCon_map,
+                    gRows,
+                    idxN,
+                    vals1,
+                    connectedStates,
+                    0);
+            }            
+        }
+    }
+
+    /// no need to do this, just keep the existing stencil in stateBoundaryCon, we will refresh values
+    // Now stateBoundaryConTmp will have all the missing stencil. However, it will also mess
+    // up the existing stencil in stateBoundaryCon. So we need to do a check to make sure that
+    // stateBoundaryConTmp only add stencil, not replacing any existing stencil in stateBoundaryCon.
+    // If anything in stateBoundaryCon is replaced, rollback the changes.
+    for (auto &rowEntry : stateCon_map) 
+    {
+        PetscInt row = rowEntry.first;
+        auto tmpRowEntry = stateCon_map_tmp.find(row);
+        /// judge whether this row exists in the tmp map
+        if (tmpRowEntry != stateCon_map_tmp.end())
+        {
+            for (auto &colEntry : rowEntry.second) 
+            {
+                PetscInt col = colEntry.first;
+                auto tmpColEntry = tmpRowEntry->second.find(col);
+                /// judge whether this col exists in the tmp map, if exists, then replace the value
+                if (tmpColEntry != tmpRowEntry->second.end())
+                {
+                    stateCon_map[row][col] = tmpColEntry->second;
+                }
+            }
+        }
+    }
+
+    /// rollback for fieldStateCon_map
+    for (auto &rowEntry : fieldStateCon_map) 
+    {
+        PetscInt row = rowEntry.first;
+        auto tmpRowEntry = fieldStateCon_map_tmp.find(row);
+        /// judge whether this row exists in the tmp map
+        if (tmpRowEntry != fieldStateCon_map_tmp.end())
+        {
+            for (auto &colEntry : rowEntry.second) 
+            {
+                PetscInt col = colEntry.first;
+                auto tmpColEntry = tmpRowEntry->second.find(col);
+                /// judge whether this col exists in the tmp map, if exists, then replace the value
+                if (tmpColEntry != tmpRowEntry->second.end())
+                {
+                    fieldStateCon_map[row][col] = tmpColEntry->second;
+                }
+            }
+        }
+    }
+
+    ///  we need refresh level connections for mixingPlane patches
+    // level 3 con
+    forAll(patches, patchI)
+    {
+        const polyPatch& pp = patches[patchI];
+        const UList<label>& pFaceCells = pp.faceCells();
+        // get the start index of this patch in the global face list
+        label faceIStart = pp.start();
+
+        if ( pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+            
+                // This cell is already a neighbour cell, so we need this plus two
+                // more levels
+                // Start with next to nearest neighbours
+                forAll(mesh_.cellCells()[idxN], cellI)
+                {
+                    label localCell = mesh_.cellCells()[idxN][cellI];
+                    forAll(daIndex_.adjStateNames, idxI)
+                    {
+                        word stateName = daIndex_.adjStateNames[idxI];
+                        if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                        {
+                            // Now add level 3 connectivity, add all vars except for
+                            // surfaceScalarStates
+                            this->addConMatNeighbourCells(
+                                fieldStateCon_map,
+                                gRows,
+                                localCell,
+                                stateName,
+                                3.0);
+                        }
+                    }
                 }
             }            
         }
     }
-    MatAssemblyBegin(*stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(*stateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
 
-    MatAssemblyBegin(*fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(*fieldStateBoundaryConTmp, MAT_FINAL_ASSEMBLY);
+    // level 2 con
+    forAll(patches, patchI)
+    {
+        const polyPatch& pp = patches[patchI];
+        const UList<label>& pFaceCells = pp.faceCells();
+        // get the start index of this patch in the global face list
+        label faceIStart = pp.start();
 
-    // Now stateBoundaryConTmp will have all the missing stencil. However, it will also mess
-    // up the existing stencil in stateBoundaryCon. So we need to do a check to make sure that
-    // stateBoundaryConTmp only add stencil, not replacing any existing stencil in stateBoundaryCon.
-    // If anything in stateBoundaryCon is replaced, rollback the changes.
-    Mat tmpMat; // create a temp mat
-    MatCreate(PETSC_COMM_WORLD, &tmpMat);
+        if ( pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                // now add the nearest neighbour cells, add all vars for level 2 except
+                // for surfaceScalarStates
+                forAll(daIndex_.adjStateNames, idxI)
+                {
+                    word stateName = daIndex_.adjStateNames[idxI];
+                    if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                    {
+                        this->addConMatNeighbourCells(
+                            fieldStateCon_map,
+                            gRows,
+                            idxN,
+                            stateName,
+                            2.0);
+                    }
+                }
+            }            
+        }
+    }
+
+    // face con
+    forAll(patches, patchI)
+    {
+        const polyPatch& pp = patches[patchI];
+        const UList<label>& pFaceCells = pp.faceCells();
+        // get the start index of this patch in the global face list
+        label faceIStart = pp.start();
+
+        if ( pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                // and add the surfaceScalarStates for idxN
+                forAll(stateInfo_["surfaceScalarStates"], idxI)
+                {
+                    word stateName = stateInfo_["surfaceScalarStates"][idxI];
+                    this->addConMatCellFaces(
+                        fieldStateCon_map,
+                        gRows,
+                        idxN,
+                        stateName,
+                        10.0);
+                }
+            }            
+        }
+    }
+
+    // level 1 con
+    forAll(patches, patchI)
+    {
+        const polyPatch& pp = patches[patchI];
+        const UList<label>& pFaceCells = pp.faceCells();
+        // get the start index of this patch in the global face list
+        label faceIStart = pp.start();
+
+        if ( pp.type() == "mixingPlane")
+        {
+            forAll(pp, faceI)
+            {
+                // get the necessary matrix row
+                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                faceIStart++;
+                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                // Now get the cell that borders this coupled bFace
+                label idxN = pFaceCells[faceI];
+
+                // Add all the cell states for idxN
+                forAll(daIndex_.adjStateNames, idxI)
+                {
+                    word stateName = daIndex_.adjStateNames[idxI];
+                    if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                    {
+                        this->addConMatCell(
+                            fieldStateCon_map,
+                            gRows,
+                            idxN,
+                            stateName,
+                            1.0);
+                    }
+                }
+            }
+        }
+    }
+
+    // convert tmpMat_map to stateBoundaryCon
+    MatDestroy(stateBoundaryCon);
+    MatCreate(PETSC_COMM_WORLD, stateBoundaryCon);
     MatSetSizes(
-        tmpMat,
+        *stateBoundaryCon,
         daIndex_.nLocalCoupledBFaces,
         daIndex_.nLocalAdjointStates,
         PETSC_DETERMINE,
         PETSC_DETERMINE);
-    MatSetFromOptions(tmpMat);
-    MatMPIAIJSetPreallocation(tmpMat, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(tmpMat, 1000, NULL);
-    MatSetOption(tmpMat, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(tmpMat);
-    MatZeroEntries(tmpMat); // initialize with zeros
-    MatGetOwnershipRange(*stateBoundaryConTmp, &Istart, &Iend);
-    for (PetscInt i = Istart; i < Iend; i++)
-    {
-        MatGetRow(*stateBoundaryCon, i, &nCols, &cols, &vals);
-        MatGetRow(*stateBoundaryConTmp, i, &nCols1, &cols1, &vals1);
-        for (PetscInt j = 0; j < nCols1; j++)
-        {
-            // for each col in stateBoundaryConTmp, we need to check if there are any existing
-            // values for the same col in stateBoundaryCon. If yes, assign the val from
-            // stateBoundaryCon instead of stateBoundaryConTmp
-            PetscScalar newVal = vals1[j];
-            PetscInt newCol = cols1[j];
-            for (PetscInt k = 0; k < nCols; k++)
-            {
-                if (int(cols[k]) == int(cols1[j]))
-                {
-                    newVal = vals[k];
-                    newCol = cols[k];
-                    break;
-                }
-            }
-            MatSetValue(tmpMat, i, newCol, newVal, INSERT_VALUES);
-        }
-        MatRestoreRow(*stateBoundaryCon, i, &nCols, &cols, &vals);
-        MatRestoreRow(*stateBoundaryConTmp, i, &nCols1, &cols1, &vals1);
-    }
-    MatAssemblyBegin(tmpMat, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(tmpMat, MAT_FINAL_ASSEMBLY);
+    MatSetFromOptions(*stateBoundaryCon);
 
-    // copy ConMat to ConMatTmp
-    MatDestroy(stateBoundaryCon);
-    MatConvert(tmpMat, MATSAME, MAT_INITIAL_MATRIX, stateBoundaryCon);
+    /// preallocation stateBoundaryCon
+    preallocateStateBndCon(daIndex_.nLocalCoupledBFaces, stateBoundaryCon, stateCon_map);
+    // MatMPIAIJSetPreallocation(*stateBoundaryCon, 2000, NULL, 2000, NULL);
+    // MatSeqAIJSetPreallocation(*stateBoundaryCon, 2000, NULL);
+
+    MatSetOption(*stateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
+    MatSetUp(*stateBoundaryCon);
+    MatZeroEntries(*stateBoundaryCon); // initialize with zeros    
+
+    /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
+    for (auto &rowEntry : stateCon_map) {
+        PetscInt row = rowEntry.first;
+        for (auto &colEntry : rowEntry.second) {
+            PetscInt col = colEntry.first;
+            PetscScalar val = colEntry.second;
+            MatSetValues(*stateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+        }
+    }
+
     MatAssemblyBegin(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
 
-    MatDestroy(stateBoundaryConTmp);
-    MatDestroy(&tmpMat);
-
-    // Now stateBoundaryConTmp will have all the missing stencil. However, it will also mess
-    // up the existing stencil in stateBoundaryCon. So we need to do a check to make sure that
-    // stateBoundaryConTmp only add stencil, not replacing any existing stencil in stateBoundaryCon.
-    // If anything in stateBoundaryCon is replaced, rollback the changes.
-    Mat tmpFieldMat; // create a temp mat
-    MatCreate(PETSC_COMM_WORLD, &tmpFieldMat);
+    // convert tmpFieldMat_map to fieldStateBoundaryCon
+    MatDestroy(fieldStateBoundaryCon);
+    MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryCon);
     MatSetSizes(
-        tmpFieldMat,
+        *fieldStateBoundaryCon,
         daIndex_.nLocalFieldCoupledBFaces,
         daIndex_.nLocalAdjointStates,
         PETSC_DETERMINE,
         PETSC_DETERMINE);
-    MatSetFromOptions(tmpFieldMat);
-    MatMPIAIJSetPreallocation(tmpFieldMat, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(tmpFieldMat, 1000, NULL);
-    MatSetOption(tmpFieldMat, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(tmpFieldMat);
-    MatZeroEntries(tmpFieldMat); // initialize with zeros
-    MatGetOwnershipRange(*fieldStateBoundaryConTmp, &Istart, &Iend);
-    for (PetscInt i = Istart; i < Iend; i++)
-    {
-        MatGetRow(*fieldStateBoundaryCon, i, &nCols, &cols, &vals);
-        MatGetRow(*fieldStateBoundaryConTmp, i, &nCols1, &cols1, &vals1);
-        for (PetscInt j = 0; j < nCols1; j++)
-        {
-            // for each col in stateBoundaryConTmp, we need to check if there are any existing
-            // values for the same col in stateBoundaryCon. If yes, assign the val from
-            // stateBoundaryCon instead of stateBoundaryConTmp
-            PetscScalar newVal = vals1[j];
-            PetscInt newCol = cols1[j];
-            for (PetscInt k = 0; k < nCols; k++)
-            {
-                if (int(cols[k]) == int(cols1[j]))
-                {
-                    newVal = vals[k];
-                    newCol = cols[k];
-                    break;
-                }
-            }
-            MatSetValue(tmpFieldMat, i, newCol, newVal, INSERT_VALUES);
-        }
-        MatRestoreRow(*fieldStateBoundaryCon, i, &nCols, &cols, &vals);
-        MatRestoreRow(*fieldStateBoundaryConTmp, i, &nCols1, &cols1, &vals1);
-    }
-    MatAssemblyBegin(tmpFieldMat, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(tmpFieldMat, MAT_FINAL_ASSEMBLY);
+    MatSetFromOptions(*fieldStateBoundaryCon);
 
-    // copy ConMat to ConMatTmp
-    MatDestroy(fieldStateBoundaryCon);
-    MatConvert(tmpFieldMat, MATSAME, MAT_INITIAL_MATRIX, fieldStateBoundaryCon);
+    /// preallocation stateBoundaryCon
+    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces, fieldStateBoundaryCon,fieldStateCon_map);
+    // MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL, 2000, NULL);
+    // MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL);
+
+    MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
+    MatSetUp(*fieldStateBoundaryCon);
+    MatZeroEntries(*fieldStateBoundaryCon); // initialize with zeros    
+
+    /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
+    for (auto &rowEntry : fieldStateCon_map) {
+        PetscInt row = rowEntry.first;
+        for (auto &colEntry : rowEntry.second) {
+            PetscInt col = colEntry.first;
+            PetscScalar val = colEntry.second;
+            MatSetValues(*fieldStateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+        }
+    }
+
     MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
 
-    MatDestroy(fieldStateBoundaryConTmp);
-    MatDestroy(&tmpFieldMat);
-
     return;
+}
+
+
+void DAJacCon::preallocateStateBndCon(
+    PetscInt localRows,
+    Mat* bndConMat,
+    bufferConMap &con_map)
+{
+    /*  
+    Description:
+        This function preallocates the stateBoundaryCon matrix.
+        The preallocation is based on the con_map, which is generated during
+        the construction of stateBoundaryCon.
+    Input:
+        localRows: number of local rows for the matrix
+        bndConMat: the matrix to be preallocated
+        con_map: the connectivity map used to determine the preallocation size
+    */
+    PetscMPIInt    rank, size; 
+    PetscInt      *allstarts = NULL, *allends = NULL, *allcolMins = NULL, *allcolMaxs = NULL;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+    Vec conPreallocOn, conPreallocOff;
+    VecCreate(PETSC_COMM_WORLD, &conPreallocOn);
+    VecSetSizes(conPreallocOn, localRows, PETSC_DECIDE);
+    VecSetFromOptions(conPreallocOn);
+
+    VecDuplicate(conPreallocOn, &conPreallocOff);
+    VecZeroEntries(conPreallocOn);
+    VecZeroEntries(conPreallocOff);
+    PetscInt Istart, Iend;
+    VecGetOwnershipRange(conPreallocOn, &Istart, &Iend);
+
+    PetscInt colMin = daIndex_.globalAdjointStateNumbering.toGlobal(0);
+    PetscInt colMax = colMin + daIndex_.nLocalAdjointStates;
+
+    /// collect all processor Istart, Iend, colMin, colMax
+    PetscMalloc4(size,&allstarts,size,&allends,size,&allcolMins,size,&allcolMaxs);
+    MPI_Allgather(&Istart,1,MPIU_INT,allstarts,1,MPIU_INT,PETSC_COMM_WORLD);
+    MPI_Allgather(&Iend,1,MPIU_INT,allends,1,MPIU_INT,PETSC_COMM_WORLD);
+    MPI_Allgather(&colMin,1,MPIU_INT,allcolMins,1,MPIU_INT,PETSC_COMM_WORLD);
+    MPI_Allgather(&colMax,1,MPIU_INT,allcolMaxs,1,MPIU_INT,PETSC_COMM_WORLD);
+
+    for (auto &rowEntry : con_map) 
+    {
+        PetscInt idxI = rowEntry.first;
+        for (auto &colEntry : rowEntry.second) 
+        {
+            PetscInt idxJ = colEntry.first;
+            /// we need to find which processor own idxI 
+            for (PetscInt p = 0; p < size; p++)
+            {
+                if (allstarts[p] <= idxI and idxI < allends[p])
+                {
+                    if (allcolMins[p] <= idxJ and idxJ < allcolMaxs[p])
+                    {
+                        VecSetValue(conPreallocOn, idxI, 1.0, ADD_VALUES);
+                    }
+                    else
+                    {
+                        VecSetValue(conPreallocOff, idxI, 1.0, ADD_VALUES);                
+                    }
+                    break;
+                }
+            }
+        }
+    }    
+
+    VecAssemblyBegin(conPreallocOn);
+    VecAssemblyEnd(conPreallocOn);
+    VecAssemblyBegin(conPreallocOff);
+    VecAssemblyEnd(conPreallocOff);
+
+    PetscScalar *onVec, *offVec;
+    PetscInt onSize[localRows], offSize[localRows];   
+
+    VecGetArray(conPreallocOn, &onVec);
+    VecGetArray(conPreallocOff, &offVec);
+    for (label i = 0; i < localRows; i++)
+    {
+        onSize[i] = round(onVec[i]);
+        // if (onSize[i] > daIndex_.nLocalAdjointStates)
+        // {
+        //     onSize[i] = daIndex_.nLocalAdjointStates;
+        // }
+        offSize[i] = round(offVec[i]) + 5; // reserve 5 more?
+    }
+
+    VecRestoreArray(conPreallocOn, &onVec);
+    VecRestoreArray(conPreallocOff, &offVec);     
+
+    MatMPIAIJSetPreallocation(*bndConMat, NULL, onSize, NULL, offSize);
+    MatSeqAIJSetPreallocation(*bndConMat, NULL, onSize);
+
+    VecDestroy(&conPreallocOn);
+    VecDestroy(&conPreallocOff);
+    return;
+
 }
 
 void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateBoundaryConID)
@@ -2136,35 +2285,9 @@ void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateB
     adjStateID4GlobalAdjIdx.setSize(daIndex_.nGlobalAdjointStates);
     daIndex_.calcAdjStateID4GlobalAdjIdx(adjStateID4GlobalAdjIdx);
 
-    // initialize
-    MatCreate(PETSC_COMM_WORLD, stateBoundaryConID);
-    MatSetSizes(
-        *stateBoundaryConID,
-        daIndex_.nLocalCoupledBFaces,
-        daIndex_.nLocalAdjointStates,
-        PETSC_DETERMINE,
-        PETSC_DETERMINE);
-    MatSetFromOptions(*stateBoundaryConID);
-    MatMPIAIJSetPreallocation(*stateBoundaryConID, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(*stateBoundaryConID, 1000, NULL);
-    MatSetOption(*stateBoundaryConID, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(*stateBoundaryConID);
-    MatZeroEntries(*stateBoundaryConID);
-
-    // initialize
-    MatCreate(PETSC_COMM_WORLD, fieldStateBoundaryConID);
-    MatSetSizes(
-        *fieldStateBoundaryConID,
-        daIndex_.nLocalFieldCoupledBFaces,
-        daIndex_.nLocalAdjointStates,
-        PETSC_DETERMINE,
-        PETSC_DETERMINE);
-    MatSetFromOptions(*fieldStateBoundaryConID);
-    MatMPIAIJSetPreallocation(*fieldStateBoundaryConID, 1000, NULL, 1000, NULL);
-    MatSeqAIJSetPreallocation(*fieldStateBoundaryConID, 1000, NULL);
-    MatSetOption(*fieldStateBoundaryConID, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(*fieldStateBoundaryConID);
-    MatZeroEntries(*fieldStateBoundaryConID);    
+    MatDuplicate(stateBoundaryCon_, MAT_DO_NOT_COPY_VALUES, stateBoundaryConID);
+ 
+    MatDuplicate(fieldStateBoundaryCon_, MAT_DO_NOT_COPY_VALUES, fieldStateBoundaryConID);
 
     MatGetOwnershipRange(stateBoundaryCon_, &Istart, &Iend);
 
@@ -2214,7 +2337,7 @@ void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateB
 }
 
 void DAJacCon::addConMatCell(
-    Mat conMat,
+    bufferConMap &conMat,
     const label gRow,
     const label cellI,
     const word stateName,
@@ -2266,14 +2389,48 @@ void DAJacCon::addConMatCell(
     {
         idxJ = daIndex_.getGlobalAdjointStateIndex(stateName, cellI, i);
         // set it in the matrix
-        MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
+        conMat[idxI][idxJ] = val;
+    }
+
+    return;
+}
+
+void DAJacCon::addConMatCell(
+    bufferConMap &con_map,
+    const labelList gRows,
+    const label cellI,
+    const word stateName,
+    const PetscScalar val)
+{
+    /* 
+    Description:
+        overload function for addConMatCell to handle multiple rows.
+    */
+
+    PetscInt idxJ;
+
+    // find the global index of this state
+    label compMax = 1;
+    if (daIndex_.adjStateType[stateName] == "volVectorState")
+    {
+        compMax = 3;
+    }
+
+    for (label i = 0; i < compMax; i++)
+    {
+        idxJ = daIndex_.getGlobalAdjointStateIndex(stateName, cellI, i);
+        // set it in the matrix
+        forAll(gRows, idxI)
+        {
+            con_map[gRows[idxI]][idxJ] = val;
+        }
     }
 
     return;
 }
 
 void DAJacCon::addConMatNeighbourCells(
-    Mat conMat,
+    bufferConMap &conMat,
     const label gRow,
     const label cellI,
     const word stateName,
@@ -2334,7 +2491,49 @@ void DAJacCon::addConMatNeighbourCells(
         {
             idxJ = daIndex_.getGlobalAdjointStateIndex(stateName, localCellJ, i);
             // set it in the matrix
-            MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
+            conMat[idxI][idxJ] = val;
+        }
+    }
+
+    return;
+}
+
+void DAJacCon::addConMatNeighbourCells(
+    bufferConMap &con_map,
+    const labelList gRows,
+    const label cellI,
+    const word stateName,
+    const PetscScalar val)
+{
+
+    /*
+    Description:
+        ovreload function for addConMatNeighbourCells to handle multiple rows.
+    */
+
+    label localCellJ;
+    PetscInt idxJ;
+
+    // Add the nearest neighbour cells for cell
+    forAll(mesh_.cellCells()[cellI], cellJ)
+    {
+        // get the local neighbour cell
+        localCellJ = mesh_.cellCells()[cellI][cellJ];
+
+        // find the global index of this state
+        label compMax = 1;
+        if (daIndex_.adjStateType[stateName] == "volVectorState")
+        {
+            compMax = 3;
+        }
+        for (label i = 0; i < compMax; i++)
+        {
+            idxJ = daIndex_.getGlobalAdjointStateIndex(stateName, localCellJ, i);
+            // set it in the matrix
+            forAll(gRows, idxI)
+            {
+                con_map[gRows[idxI]][idxJ] = val;
+            }
         }
     }
 
@@ -2342,7 +2541,7 @@ void DAJacCon::addConMatNeighbourCells(
 }
 
 void DAJacCon::addConMatCellFaces(
-    Mat conMat,
+    bufferConMap &conMat,
     const label gRow,
     const label cellI,
     const word stateName,
@@ -2391,14 +2590,46 @@ void DAJacCon::addConMatCellFaces(
         //get the appropriate index for this face
         label globalState = daIndex_.getGlobalAdjointStateIndex(stateName, faces[idx]);
         idxJ = globalState;
-        MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
+        conMat[idxI][idxJ] = val;
+    }
+
+    return;
+}
+
+void DAJacCon::addConMatCellFaces(
+    bufferConMap &con_map,
+    const labelList gRows,
+    const label cellI,
+    const word stateName,
+    const PetscScalar val)
+{
+
+    /* 
+    Description:
+        Overload function for addConMatCellFaces to handle multiple rows.
+    */
+
+    PetscInt idxJ;
+
+    // get the faces connected to this cell, note these are in a single
+    // list that includes all internal and boundary faces
+    const labelList& faces = mesh_.cells()[cellI];
+    forAll(faces, idx)
+    {
+        //get the appropriate index for this face
+        label globalState = daIndex_.getGlobalAdjointStateIndex(stateName, faces[idx]);
+        idxJ = globalState;
+        forAll(gRows, idxI)
+        {
+            con_map[gRows[idxI]][idxJ] = val;
+        }
     }
 
     return;
 }
 
 void DAJacCon::addBoundaryFaceConnections(
-    Mat conMat,
+    bufferConMap &conMat,
     const label gRow,
     const label cellI,
     const labelList v,
@@ -2535,6 +2766,56 @@ void DAJacCon::addBoundaryFaceConnections(
                         // check if we need to get stateID
                         MatGetRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                     }
+
+                    // now loop over the row and set any column that match this level
+                    // in conMat
+                    for (label i = 0; i < nCols; i++)
+                    {
+                        idxJ = cols[i];
+                        label val = round(vals[i]); // val is the connectivity level extracted from stateBoundaryCon_ at this col
+                        // selectively add some states into conMat
+                        label addState;
+                        label stateID = -9999;
+                        // check if we need to get stateID
+                        if (connectedStates.size() != 0)
+                        {
+                            stateID = round(valsID[i]);
+                        }
+
+                        if (connectedStates.size() == 0)
+                        {
+                            addState = 1;
+                        }
+                        else if (connectedStateIDs[lv - 1].found(stateID))
+                        {
+                            addState = 1;
+                        }
+                        else
+                        {
+                            addState = 0;
+                        }
+                        // if the level match and the state is what you want
+                        if (val == lv && addState)
+                        {
+                            // need to do v[lv-1] here since v is an array with starting index 0
+                            PetscScalar valIn = v[lv - 1];
+                            conMat[idxI][idxJ] = valIn;
+                        }
+                        if (val == 10 && addFaces)
+                        {
+                            // this is a necessary connection
+                            PetscScalar valIn = v[lv - 1];
+                            conMat[idxI][idxJ] = valIn;
+                        }
+                    }
+
+                    // restore the row of the matrix
+                    MatRestoreRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    if (connectedStates.size() != 0)
+                    {
+                        // check if we need to get stateID
+                        MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    }
                 }
                 else if (daIndex_.isCoupledFace[currFace] == 2)
                 {
@@ -2548,54 +2829,191 @@ void DAJacCon::addBoundaryFaceConnections(
                     {
                         // check if we need to get stateID
                         MatGetRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
-                    }                      
-                }
+                    }   
+                    
+                    // now loop over the row and set any column that match this level
+                    // in conMat
+                    for (label i = 0; i < nCols; i++)
+                    {
+                        idxJ = cols[i];
+                        label val = round(vals[i]); // val is the connectivity level extracted from stateBoundaryCon_ at this col
+                        // selectively add some states into conMat
+                        label addState;
+                        label stateID = -9999;
+                        // check if we need to get stateID
+                        if (connectedStates.size() != 0)
+                        {
+                            stateID = round(valsID[i]);
+                        }
 
-                // now loop over the row and set any column that match this level
-                // in conMat
-                for (label i = 0; i < nCols; i++)
-                {
-                    idxJ = cols[i];
-                    label val = round(vals[i]); // val is the connectivity level extracted from stateBoundaryCon_ at this col
-                    // selectively add some states into conMat
-                    label addState;
-                    label stateID = -9999;
-                    // check if we need to get stateID
+                        if (connectedStates.size() == 0)
+                        {
+                            addState = 1;
+                        }
+                        else if (connectedStateIDs[lv - 1].found(stateID))
+                        {
+                            addState = 1;
+                        }
+                        else
+                        {
+                            addState = 0;
+                        }
+                        // if the level match and the state is what you want
+                        if (val == lv && addState)
+                        {
+                            // need to do v[lv-1] here since v is an array with starting index 0
+                            PetscScalar valIn = v[lv - 1];
+                            conMat[idxI][idxJ] = valIn;
+                        }
+                        if (val == 10 && addFaces)
+                        {
+                            // this is a necessary connection
+                            PetscScalar valIn = v[lv - 1];
+                            conMat[idxI][idxJ] = valIn;
+                        }
+                    }
+
+                    // restore the row of the matrix
+                    MatRestoreRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
                     if (connectedStates.size() != 0)
                     {
-                        stateID = round(valsID[i]);
-                    }
-
-                    if (connectedStates.size() == 0)
-                    {
-                        addState = 1;
-                    }
-                    else if (connectedStateIDs[lv - 1].found(stateID))
-                    {
-                        addState = 1;
-                    }
-                    else
-                    {
-                        addState = 0;
-                    }
-                    // if the level match and the state is what you want
-                    if (val == lv && addState)
-                    {
-                        // need to do v[lv-1] here since v is an array with starting index 0
-                        PetscScalar valIn = v[lv - 1];
-                        MatSetValues(conMat, 1, &idxI, 1, &idxJ, &valIn, INSERT_VALUES);
-                    }
-                    if (val == 10 && addFaces)
-                    {
-                        // this is a necessary connection
-                        PetscScalar valIn = v[lv - 1];
-                        MatSetValues(conMat, 1, &idxI, 1, &idxJ, &valIn, INSERT_VALUES);
-                    }
+                        // check if we need to get stateID
+                        MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    }     
                 }
+            }
+        }
+    }
 
-                // restore the row of the matrix
+    return;
+}
+
+void DAJacCon::addBoundaryFaceConnections(
+    bufferConMap &con_map,
+    const labelList gRows,
+    const label cellI,
+    const labelList v,
+    const List<List<word>> connectedStates,
+    const label addFaces)
+{
+    /*
+    Description:
+        Overload function for addBoundaryFaceConnections to handle multiple rows. This function is only used in setupStateBoundaryCon to add connections
+        for missing inter-proc faces.
+    */
+
+    if (v.size() != connectedStates.size() && connectedStates.size() != 0)
+    {
+        FatalErrorIn("") << "size of v and connectedStates are not identical!"
+                         << abort(FatalError);
+    }
+
+    PetscInt idxJ, bRow, bRowGlobal;
+    PetscInt nCols;
+    const PetscInt* cols;
+    const PetscScalar* vals;
+
+    PetscInt nColsID;
+    const PetscInt* colsID;
+    const PetscScalar* valsID;
+
+    // convert stateNames to stateIDs
+    labelListList connectedStateIDs(connectedStates.size());
+    forAll(connectedStates, idxI)
+    {
+        forAll(connectedStates[idxI], idxJ)
+        {
+            word stateName = connectedStates[idxI][idxJ];
+            label stateID = daIndex_.adjStateID[stateName];
+            connectedStateIDs[idxI].append(stateID);
+        }
+    }
+
+    // get the faces connected to this cell, note these are in a single
+    // list that includes all internal and boundary faces
+    const labelList& faces = mesh_.cells()[cellI];
+
+    //get the level
+    label level = v.size();
+
+    for (label lv = level; lv >= 1; lv--) // we need to start from the largest levels since they have higher priority
+    {
+        forAll(faces, faceI)
+        {
+            // Now deal with coupled faces
+            label currFace = faces[faceI];
+            
+            // only deal with processor coupled face
+            if (daIndex_.isCoupledFace[currFace])
+            {
+                //this is a coupled face
+
+                // use the boundary connectivity to figure out what is connected
+                // to this face for this level
                 if (daIndex_.isCoupledFace[currFace] == 1)
                 {
+                    // get bRow in boundaryCon for this face
+                    bRow = this->getLocalCoupledBFaceIndex(currFace);
+                    // get the global bRow index
+                    bRowGlobal = daIndex_.globalCoupledBFaceNumbering.toGlobal(bRow);
+
+                    // now extract the boundaryCon row
+                    MatGetRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    if (connectedStates.size() != 0)
+                    {
+                        // check if we need to get stateID
+                        MatGetRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    }  
+
+                    // now loop over the row and set any column that match this level
+                    // in conMat
+                    for (label i = 0; i < nCols; i++)
+                    {
+                        idxJ = cols[i];
+                        label val = round(vals[i]); // val is the connectivity level extracted from stateBoundaryCon_ at this col
+                        // selectively add some states into conMat
+                        label addState;
+                        label stateID = -9999;
+                        // check if we need to get stateID
+                        if (connectedStates.size() != 0)
+                        {
+                            stateID = round(valsID[i]);
+                        }
+
+                        if (connectedStates.size() == 0)
+                        {
+                            addState = 1;
+                        }
+                        else if (connectedStateIDs[lv - 1].found(stateID))
+                        {
+                            addState = 1;
+                        }
+                        else
+                        {
+                            addState = 0;
+                        }
+                        // if the level match and the state is what you want
+                        if (val == lv && addState)
+                        {
+                            // need to do v[lv-1] here since v is an array with starting index 0
+                            PetscScalar valIn = v[lv - 1];
+                            forAll(gRows, idxI)
+                            {
+                                con_map[gRows[idxI]][idxJ] = valIn; 
+                            }
+                        }
+                        if (val == 10 && addFaces)
+                        {
+                            // this is a necessary connection
+                            PetscScalar valIn = v[lv - 1];
+                            forAll(gRows, idxI)
+                            {
+                                con_map[gRows[idxI]][idxJ] = valIn; 
+                            }
+                        }
+                    }
+
+                    // restore the row of the matrix
                     MatRestoreRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
                     if (connectedStates.size() != 0)
                     {
@@ -2605,13 +3023,74 @@ void DAJacCon::addBoundaryFaceConnections(
                 }
                 else if (daIndex_.isCoupledFace[currFace] == 2)
                 {
+                    bRow = this->getLocalFieldCoupledBFaceIndex(currFace);
+                    // get the global bRow index
+                    bRowGlobal = daIndex_.globalFieldCoupledBFaceNumbering.toGlobal(bRow);
+
+                    // now extract the boundaryCon row
+                    MatGetRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    if (connectedStates.size() != 0)
+                    {
+                        // check if we need to get stateID
+                        MatGetRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    } 
+
+                    // now loop over the row and set any column that match this level
+                    // in conMat
+                    for (label i = 0; i < nCols; i++)
+                    {
+                        idxJ = cols[i];
+                        label val = round(vals[i]); // val is the connectivity level extracted from stateBoundaryCon_ at this col
+                        // selectively add some states into conMat
+                        label addState;
+                        label stateID = -9999;
+                        // check if we need to get stateID
+                        if (connectedStates.size() != 0)
+                        {
+                            stateID = round(valsID[i]);
+                        }
+
+                        if (connectedStates.size() == 0)
+                        {
+                            addState = 1;
+                        }
+                        else if (connectedStateIDs[lv - 1].found(stateID))
+                        {
+                            addState = 1;
+                        }
+                        else
+                        {
+                            addState = 0;
+                        }
+                        // if the level match and the state is what you want
+                        if (val == lv && addState)
+                        {
+                            // need to do v[lv-1] here since v is an array with starting index 0
+                            PetscScalar valIn = v[lv - 1];
+                            forAll(gRows, idxI)
+                            {
+                                con_map[gRows[idxI]][idxJ] = valIn; 
+                            }
+                        }
+                        if (val == 10 && addFaces)
+                        {
+                            // this is a necessary connection
+                            PetscScalar valIn = v[lv - 1];
+                            forAll(gRows, idxI)
+                            {
+                                con_map[gRows[idxI]][idxJ] = valIn; 
+                            }
+                        }
+                    }
+
+                    // restore the row of the matrix
                     MatRestoreRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
                     if (connectedStates.size() != 0)
                     {
                         // check if we need to get stateID
                         MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
-                    }                    
-                }
+                    }
+                }    
             }
         }
     }
@@ -2886,7 +3365,7 @@ void DAJacCon::setupdRdWCon(
     // connectedStatesP: one row matrix that stores the actual connectivity,
     // element value 1 denotes a connected state. connectedStatesP is then used to
     // assign dRdWPreallocOn or dRdWCon
-    Mat connectedStatesP;
+    bufferConMap connectedStatesP;
 
     PetscInt nCols;
     const PetscInt* cols;
@@ -2951,7 +3430,7 @@ void DAJacCon::setupdRdWCon(
             {
 
                 // zero the connections
-                this->createConnectionMat(&connectedStatesP);
+                connectedStatesP.clear();
 
                 // now add the con. We loop over all the connectivity levels
                 forAll(stateResConInfo[resName], idxJ) // idxJ: con level
@@ -3081,7 +3560,7 @@ void DAJacCon::setupdRdWCon(
         {
 
             //zero the connections
-            this->createConnectionMat(&connectedStatesP);
+            connectedStatesP.clear();
 
             // Get the owner and neighbour cells for this face
             label idxO = -1, idxN = -1;
@@ -3260,6 +3739,39 @@ void DAJacCon::setupdRdWCon(
                     MatRestoreRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
                     MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                 }
+                else if (mesh_.boundaryMesh()[patchIdx].type() == "cyclicAMI" or mesh_.boundaryMesh()[patchIdx].type() == "mixingPlane")
+                {
+                    label bRow = this->getLocalFieldCoupledBFaceIndex(faceI);
+                    label bRowGlobal = daIndex_.globalFieldCoupledBFaceNumbering.toGlobal(bRow);
+                    MatGetRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    MatGetRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
+                    for (label i = 0; i < nCols; i++)
+                    {
+                        PetscInt idxJ = cols[i];
+                        label val = round(vals[i]);
+                        // we are going to add some selective states with connectivity level <= 3
+                        // first check the state
+                        label stateID = round(valsID[i]);
+                        word conName = daIndex_.adjStateNames[stateID];
+                        label addState = 0;
+                        // NOTE: we use val-1 here since phi actually has 3 levels of connectivity
+                        // however, when we assign stateResConInfo, we ignore the level 0
+                        // connectivity since they are idxN and idxO
+                        if (val != 10 && val < maxLevel + 1)
+                        {
+                            if (stateResConInfo[resName][val - 1].found(conName))
+                            {
+                                addState = 1;
+                            }
+                        }
+                        if (addState == 1 && val < maxLevel + 1 && val > 0)
+                        {
+                            this->setConnections(connectedStatesP, idxJ);
+                        }
+                    }
+                    MatRestoreRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
+                    MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);                    
+                }
             }
 
             // get the global index of the current state for the row index
@@ -3340,7 +3852,7 @@ void DAJacCon::allocateJacobianConnections(
     Vec preallocOffProc,
     Vec preallocOnProcT,
     Vec preallocOffProcT,
-    Mat connections,
+    bufferConMap &connections,
     const label row)
 {
     /*
@@ -3368,12 +3880,6 @@ void DAJacCon::allocateJacobianConnections(
 
     */
     PetscScalar v = 1.0;
-    PetscInt nCols;
-    const PetscInt* cols;
-    const PetscScalar* vals;
-
-    MatAssemblyBegin(connections, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(connections, MAT_FINAL_ASSEMBLY);
 
     // Compute the transposed case
     // in this case connections represents a single column, so we need to
@@ -3381,34 +3887,33 @@ void DAJacCon::allocateJacobianConnections(
 
     label colMin = daIndex_.globalAdjointStateNumbering.toGlobal(0);
     label colMax = colMin + daIndex_.nLocalAdjointStates;
-    // by construction rows should be limited to local rows
-    MatGetRow(connections, 0, &nCols, &cols, &vals);
 
     // for the non-transposed case just sum up the row.
     // count up the total number of non zeros in this row
     label totalCount = 0; //2
     label localCount = 0;
     //int idx;
-    for (label j = 0; j < nCols; j++)
+    auto it = connections.find(0);
+    if (it != connections.end())
     {
-        // int idx = cols[j];
-        scalar val = vals[j];
-        if (DAUtility::isValueCloseToRef(val, 1.0))
+        for (auto const& cols : it->second)
         {
-            // We can compute the first part of the non-transposed row here.
-            totalCount++;
-            label idx = cols[j];
-            // Set the transposed version as well
-            if (colMin <= idx && idx < colMax)
+            if (DAUtility::isValueCloseToRef(cols.second, 1.0))
             {
-                //this entry is a local entry, increment the corresponding row
-                VecSetValue(preallocOnProcT, idx, v, ADD_VALUES);
-                localCount++;
-            }
-            else
-            {
-                // this is an off proc entry.
-                VecSetValue(preallocOffProcT, idx, v, ADD_VALUES);
+                totalCount++;
+                label idxJ = cols.first;    
+                // Set the transposed version as well
+                if (colMin <= idxJ && idxJ < colMax)
+                {
+                    //this entry is a local entry, increment the corresponding row
+                    VecSetValue(preallocOnProcT, idxJ, v, ADD_VALUES);
+                    localCount++;
+                }
+                else
+                {
+                    // this is an off proc entry.
+                    VecSetValue(preallocOffProcT, idxJ, v, ADD_VALUES);
+                }
             }
         }
     }
@@ -3416,10 +3921,6 @@ void DAJacCon::allocateJacobianConnections(
     label offProcCount = totalCount - localCount;
     VecSetValue(preallocOnProc, row, localCount, INSERT_VALUES);
     VecSetValue(preallocOffProc, row, offProcCount, INSERT_VALUES);
-
-    // restore the row of the matrix
-    MatRestoreRow(connections, 0, &nCols, &cols, &vals);
-    MatDestroy(&connections);
 
     return;
 }

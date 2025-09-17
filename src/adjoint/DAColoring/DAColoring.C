@@ -65,7 +65,7 @@ void DAColoring::parallelD2Coloring(
     */
 
     // if we end up having more than 10000 colors, something must be wrong
-    label maxColors = 10000;
+    label maxColors = 100000;
 
     PetscInt nCols, nCols2;
     const PetscInt* cols;
