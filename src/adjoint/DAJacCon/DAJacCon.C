@@ -175,7 +175,8 @@ void DAJacCon::preallocateJacobianMatrix(
     }
 
     PetscScalar *onVec, *offVec;
-    PetscInt onSize[daIndex_.nLocalAdjointStates], offSize[daIndex_.nLocalAdjointStates];
+    // we have to use vector, if directly use array will give a Segmentation fault error
+    std::vector<PetscInt> onSize(daIndex_.nLocalAdjointStates), offSize(daIndex_.nLocalAdjointStates);
 
     VecGetArray(preallocOnProc, &onVec);
     VecGetArray(preallocOffProc, &offVec);
@@ -195,8 +196,8 @@ void DAJacCon::preallocateJacobianMatrix(
     // MatMPIAIJSetPreallocation(dRMat,NULL,preallocOnProc,NULL,preallocOffProc);
     // MatSeqAIJSetPreallocation(dRMat,NULL,preallocOnProc);
 
-    MatMPIAIJSetPreallocation(dRMat, NULL, onSize, NULL, offSize);
-    MatSeqAIJSetPreallocation(dRMat, NULL, onSize);
+    MatMPIAIJSetPreallocation(dRMat, NULL, onSize.data(), NULL, offSize.data());
+    MatSeqAIJSetPreallocation(dRMat, NULL, onSize.data());
 
     return;
 }
