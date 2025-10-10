@@ -1121,7 +1121,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
             }
         }
         // check whether this face is coupled (cyclicAMI or mixingPlane?)
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1198,7 +1198,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
             }
         }
         // check whether this face is coupled (cyclicAMI or mixingPlane?)
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1262,7 +1262,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 }
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1325,7 +1325,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 }
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1458,7 +1458,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                 }
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1524,7 +1524,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                     0);
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1584,7 +1584,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                     0);
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1759,7 +1759,7 @@ void DAJacCon::combineStateBndCon(
                 }
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1813,7 +1813,7 @@ void DAJacCon::combineStateBndCon(
                     0);
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1864,7 +1864,7 @@ void DAJacCon::combineStateBndCon(
                     0);
             }
         }
-        else if (pp.type() == "cyclicAMI" or pp.type() == "mixingPlane")
+        else if ((pp.type() == "cyclicAMI" or pp.type() == "mixingPlane") and daOption_.getOption<bool>("adjFieldCouplingColoring"))
         {
             forAll(pp, faceI)
             {
@@ -1935,158 +1935,161 @@ void DAJacCon::combineStateBndCon(
     }
 
     ///  we need refresh level connections for mixingPlane patches
-    // level 3 con
-    forAll(patches, patchI)
+    if (daOption_.getOption<bool>("adjFieldCouplingColoring"))
     {
-        const polyPatch& pp = patches[patchI];
-        const UList<label>& pFaceCells = pp.faceCells();
-        // get the start index of this patch in the global face list
-        label faceIStart = pp.start();
-
-        if ( pp.type() == "mixingPlane")
+        // level 3 con
+        forAll(patches, patchI)
         {
-            forAll(pp, faceI)
-            {
-                // get the necessary matrix row
-                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
-                faceIStart++;
-                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+            const polyPatch& pp = patches[patchI];
+            const UList<label>& pFaceCells = pp.faceCells();
+            // get the start index of this patch in the global face list
+            label faceIStart = pp.start();
 
-                // Now get the cell that borders this coupled bFace
-                label idxN = pFaceCells[faceI];
-            
-                // This cell is already a neighbour cell, so we need this plus two
-                // more levels
-                // Start with next to nearest neighbours
-                forAll(mesh_.cellCells()[idxN], cellI)
+            if ( pp.type() == "mixingPlane")
+            {
+                forAll(pp, faceI)
                 {
-                    label localCell = mesh_.cellCells()[idxN][cellI];
+                    // get the necessary matrix row
+                    label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                    faceIStart++;
+                    labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                    // Now get the cell that borders this coupled bFace
+                    label idxN = pFaceCells[faceI];
+                
+                    // This cell is already a neighbour cell, so we need this plus two
+                    // more levels
+                    // Start with next to nearest neighbours
+                    forAll(mesh_.cellCells()[idxN], cellI)
+                    {
+                        label localCell = mesh_.cellCells()[idxN][cellI];
+                        forAll(daIndex_.adjStateNames, idxI)
+                        {
+                            word stateName = daIndex_.adjStateNames[idxI];
+                            if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                            {
+                                // Now add level 3 connectivity, add all vars except for
+                                // surfaceScalarStates
+                                this->addConMatNeighbourCells(
+                                    fieldStateCon_map,
+                                    gRows,
+                                    localCell,
+                                    stateName,
+                                    3.0);
+                            }
+                        }
+                    }
+                }            
+            }
+        }
+
+        // level 2 con
+        forAll(patches, patchI)
+        {
+            const polyPatch& pp = patches[patchI];
+            const UList<label>& pFaceCells = pp.faceCells();
+            // get the start index of this patch in the global face list
+            label faceIStart = pp.start();
+
+            if ( pp.type() == "mixingPlane")
+            {
+                forAll(pp, faceI)
+                {
+                    // get the necessary matrix row
+                    label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                    faceIStart++;
+                    labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                    // Now get the cell that borders this coupled bFace
+                    label idxN = pFaceCells[faceI];
+
+                    // now add the nearest neighbour cells, add all vars for level 2 except
+                    // for surfaceScalarStates
                     forAll(daIndex_.adjStateNames, idxI)
                     {
                         word stateName = daIndex_.adjStateNames[idxI];
                         if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
                         {
-                            // Now add level 3 connectivity, add all vars except for
-                            // surfaceScalarStates
                             this->addConMatNeighbourCells(
                                 fieldStateCon_map,
                                 gRows,
-                                localCell,
+                                idxN,
                                 stateName,
-                                3.0);
+                                2.0);
                         }
                     }
-                }
-            }            
+                }            
+            }
         }
-    }
 
-    // level 2 con
-    forAll(patches, patchI)
-    {
-        const polyPatch& pp = patches[patchI];
-        const UList<label>& pFaceCells = pp.faceCells();
-        // get the start index of this patch in the global face list
-        label faceIStart = pp.start();
-
-        if ( pp.type() == "mixingPlane")
+        // face con
+        forAll(patches, patchI)
         {
-            forAll(pp, faceI)
+            const polyPatch& pp = patches[patchI];
+            const UList<label>& pFaceCells = pp.faceCells();
+            // get the start index of this patch in the global face list
+            label faceIStart = pp.start();
+
+            if ( pp.type() == "mixingPlane")
             {
-                // get the necessary matrix row
-                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
-                faceIStart++;
-                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
-
-                // Now get the cell that borders this coupled bFace
-                label idxN = pFaceCells[faceI];
-
-                // now add the nearest neighbour cells, add all vars for level 2 except
-                // for surfaceScalarStates
-                forAll(daIndex_.adjStateNames, idxI)
+                forAll(pp, faceI)
                 {
-                    word stateName = daIndex_.adjStateNames[idxI];
-                    if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                    // get the necessary matrix row
+                    label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                    faceIStart++;
+                    labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
+
+                    // Now get the cell that borders this coupled bFace
+                    label idxN = pFaceCells[faceI];
+
+                    // and add the surfaceScalarStates for idxN
+                    forAll(stateInfo_["surfaceScalarStates"], idxI)
                     {
-                        this->addConMatNeighbourCells(
+                        word stateName = stateInfo_["surfaceScalarStates"][idxI];
+                        this->addConMatCellFaces(
                             fieldStateCon_map,
                             gRows,
                             idxN,
                             stateName,
-                            2.0);
+                            10.0);
                     }
-                }
-            }            
+                }            
+            }
         }
-    }
 
-    // face con
-    forAll(patches, patchI)
-    {
-        const polyPatch& pp = patches[patchI];
-        const UList<label>& pFaceCells = pp.faceCells();
-        // get the start index of this patch in the global face list
-        label faceIStart = pp.start();
-
-        if ( pp.type() == "mixingPlane")
+        // level 1 con
+        forAll(patches, patchI)
         {
-            forAll(pp, faceI)
+            const polyPatch& pp = patches[patchI];
+            const UList<label>& pFaceCells = pp.faceCells();
+            // get the start index of this patch in the global face list
+            label faceIStart = pp.start();
+
+            if ( pp.type() == "mixingPlane")
             {
-                // get the necessary matrix row
-                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
-                faceIStart++;
-                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
-
-                // Now get the cell that borders this coupled bFace
-                label idxN = pFaceCells[faceI];
-
-                // and add the surfaceScalarStates for idxN
-                forAll(stateInfo_["surfaceScalarStates"], idxI)
+                forAll(pp, faceI)
                 {
-                    word stateName = stateInfo_["surfaceScalarStates"][idxI];
-                    this->addConMatCellFaces(
-                        fieldStateCon_map,
-                        gRows,
-                        idxN,
-                        stateName,
-                        10.0);
-                }
-            }            
-        }
-    }
+                    // get the necessary matrix row
+                    label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
+                    faceIStart++;
+                    labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
 
-    // level 1 con
-    forAll(patches, patchI)
-    {
-        const polyPatch& pp = patches[patchI];
-        const UList<label>& pFaceCells = pp.faceCells();
-        // get the start index of this patch in the global face list
-        label faceIStart = pp.start();
+                    // Now get the cell that borders this coupled bFace
+                    label idxN = pFaceCells[faceI];
 
-        if ( pp.type() == "mixingPlane")
-        {
-            forAll(pp, faceI)
-            {
-                // get the necessary matrix row
-                label bFaceI = faceIStart - daIndex_.nLocalInternalFaces;
-                faceIStart++;
-                labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
-
-                // Now get the cell that borders this coupled bFace
-                label idxN = pFaceCells[faceI];
-
-                // Add all the cell states for idxN
-                forAll(daIndex_.adjStateNames, idxI)
-                {
-                    word stateName = daIndex_.adjStateNames[idxI];
-                    if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                    // Add all the cell states for idxN
+                    forAll(daIndex_.adjStateNames, idxI)
                     {
-                        this->addConMatCell(
-                            fieldStateCon_map,
-                            gRows,
-                            idxN,
-                            stateName,
-                            1.0);
+                        word stateName = daIndex_.adjStateNames[idxI];
+                        if (daIndex_.adjStateType[stateName] != "surfaceScalarState")
+                        {
+                            this->addConMatCell(
+                                fieldStateCon_map,
+                                gRows,
+                                idxN,
+                                stateName,
+                                1.0);
+                        }
                     }
                 }
             }
@@ -2818,7 +2821,7 @@ void DAJacCon::addBoundaryFaceConnections(
                         MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                     }
                 }
-                else if (daIndex_.isCoupledFace[currFace] == 2)
+                else if (daIndex_.isCoupledFace[currFace] == 2 and daOption_.getOption<bool>("adjFieldCouplingColoring"))
                 {
                     bRow = this->getLocalFieldCoupledBFaceIndex(currFace);
                     // get the global bRow index
@@ -3022,7 +3025,7 @@ void DAJacCon::addBoundaryFaceConnections(
                         MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                     }
                 }
-                else if (daIndex_.isCoupledFace[currFace] == 2)
+                else if (daIndex_.isCoupledFace[currFace] == 2 and daOption_.getOption<bool>("adjFieldCouplingColoring"))
                 {
                     bRow = this->getLocalFieldCoupledBFaceIndex(currFace);
                     // get the global bRow index
@@ -3740,7 +3743,8 @@ void DAJacCon::setupdRdWCon(
                     MatRestoreRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
                     MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                 }
-                else if (mesh_.boundaryMesh()[patchIdx].type() == "cyclicAMI" or mesh_.boundaryMesh()[patchIdx].type() == "mixingPlane")
+                else if ((mesh_.boundaryMesh()[patchIdx].type() == "cyclicAMI" or mesh_.boundaryMesh()[patchIdx].type() == "mixingPlane") 
+                            and daOption_.getOption<bool>("adjFieldCouplingColoring"))
                 {
                     label bRow = this->getLocalFieldCoupledBFaceIndex(faceI);
                     label bRowGlobal = daIndex_.globalFieldCoupledBFaceNumbering.toGlobal(bRow);
