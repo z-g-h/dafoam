@@ -501,6 +501,9 @@ class DAOPTION(object):
             "fpMinResTolDiff": 1.0e2,
             "fpPCUpwind": False,
             "dynAdjustTol": False,
+            "dropTol" : 1e-10,
+            "dropTcol" : 0.01,
+            "dropMaxRowCount" : 1000,
         }
 
         ## Normalization for residuals. We should normalize all residuals!
