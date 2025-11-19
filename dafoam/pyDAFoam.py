@@ -554,6 +554,7 @@ class DAOPTION(object):
         self.decomposeParDict = {
             "method": "scotch",
             "simpleCoeffs": {"n": [2, 2, 1], "delta": 0.001},
+            "kahipCoeffs" : {"config": "strong", "imbalance" : 0.01},
             "preservePatches": ["None"],
             "singleProcessorFaceSets": ["None"],
             "args": ["None"],
@@ -2150,6 +2151,12 @@ class PYDAFOAM(object):
             f.write("    n                  (%d %d %d);\n" % (n[0], n[1], n[2]))
             f.write("    delta              %g;\n" % decomDict["simpleCoeffs"]["delta"])
             f.write("} \n")
+            f.write("\n")
+            f.write("kahipCoeffs \n")
+            f.write("{ \n")
+            f.write("    config              %s;\n" % decomDict["kahipCoeffs"]["config"])
+            f.write("    imbalance           %g;\n" % decomDict["kahipCoeffs"]["imbalance"])
+            f.write("}\n")
             f.write("\n")
             f.write("distributed            false;\n")
             f.write("\n")
