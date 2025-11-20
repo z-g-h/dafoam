@@ -87,6 +87,8 @@ label DAHeatTransferFoam::solvePrimal()
             daFvSourcePtr_->calcFvSource(fvSource);
         }
 
+
+
         fvScalarMatrix TEqn(
             fvm::laplacian(k, T)
             + fvSource);
@@ -95,6 +97,13 @@ label DAHeatTransferFoam::solvePrimal()
         // and final residuals
         SolverPerformance<scalar> solverT = TEqn.solve();
         DAUtility::primalResidualControl(solverT, printToScreen_, "T", daGlobalVarPtr_->primalMaxRes);
+
+        /// update k
+        k = dimensionedScalar("k", k.dimensions(), 0.0);
+        forAll(kCoeffs,order)
+        {
+            k += kCoeffs[order]*pow(T/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
+        }
 
         this->calcAllFunctions(printToScreen_);
 

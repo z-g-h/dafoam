@@ -82,6 +82,7 @@ DAFunctionWallHeatFlux::DAFunctionWallHeatFlux(
     }
     else
     {
+        
         // it is solid model
         IOdictionary solidProperties(
             IOobject(
@@ -92,10 +93,10 @@ DAFunctionWallHeatFlux::DAFunctionWallHeatFlux(
                 IOobject::NO_WRITE,
                 false));
         // for solid, we need to read k from transportProperties
-        if (k_ < 0)
-        {
-            k_ = readScalar(solidProperties.lookup("k"));
-        }
+        // if (k_ < 0)
+        // {
+        kCoeffs = solidProperties.lookup("kCoeffs");
+        // }
 
         wallHeatFlux_.dimensions().reset(dimensionSet(1, -2, 1, 1, 0, 0, 0));
     }
@@ -220,6 +221,15 @@ scalar DAFunctionWallHeatFlux::calcFunction()
         const objectRegistry& db = mesh_.thisDb();
         const volScalarField& T = db.lookupObject<volScalarField>("T");
         const volScalarField::Boundary& TBf = T.boundaryField();
+        volScalarField k = db.lookupObject<volScalarField>("k");
+        k = dimensionedScalar("k", k.dimensions(), 0.0);
+        forAll(kCoeffs,order)
+        {
+            k += kCoeffs[order]*pow(T/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
+        }
+        volScalarField::Boundary kBf = k.boundaryField();
+        
+
 
         forAll(wallHeatFluxBf, patchI)
         {
@@ -229,7 +239,7 @@ scalar DAFunctionWallHeatFlux::calcFunction()
                 // use OpenFOAM's snGrad()
                 if (distanceMode_ == "default")
                 {
-                    wallHeatFluxBf[patchI] = k_ * TBf[patchI].snGrad();
+                    wallHeatFluxBf[patchI] = kBf[patchI] * TBf[patchI].snGrad();
                 }
                 // use DAFOAM's custom formulation
                 else if (distanceMode_ == "daCustom")
@@ -243,7 +253,7 @@ scalar DAFunctionWallHeatFlux::calcFunction()
                         vector c2 = mesh_.C()[nearWallCellIndex];
                         scalar d = mag(c1 - c2);
                         scalar dTdz = (T2 - T1) / d;
-                        wallHeatFluxBf[patchI][faceI] = k_ * dTdz;
+                        wallHeatFluxBf[patchI][faceI] = kBf[patchI][faceI] * dTdz;
                     }
                 }
             }

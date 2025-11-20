@@ -232,7 +232,13 @@ void DAInputThermalCoupling::run(const scalarList& input)
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE,
                 false));
-        scalar k = readScalar(solidProperties.lookup("k"));
+        List<scalar> kCoeffs = solidProperties.lookup("kCoeffs");
+        volScalarField k = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("k"));
+        k = dimensionedScalar("k", k.dimensions(), 0.0);
+        forAll(kCoeffs,order)
+        {
+            k += kCoeffs[order]*pow(T/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
+        }
 
         forAll(patches_, idxI)
         {
@@ -256,7 +262,7 @@ void DAInputThermalCoupling::run(const scalarList& input)
                     deltaCoeffs = 1 / d;
                 }
                 mixedFvPatchField<scalar>& mixedPatch = refCast<mixedFvPatchField<scalar>>(T.boundaryFieldRef()[patchI]);
-                scalar myKDeltaCoeffs = k * deltaCoeffs;
+                scalar myKDeltaCoeffs = k.boundaryField()[patchI][faceI] * deltaCoeffs;
                 // NOTE: we continue to use the counterI from the first loop
                 scalar neighKDeltaCoeffs = input[counterI];
                 mixedPatch.valueFraction()[faceI] = neighKDeltaCoeffs / (myKDeltaCoeffs + neighKDeltaCoeffs);

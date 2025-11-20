@@ -220,7 +220,14 @@ void DAOutputThermalCoupling::run(scalarList& output)
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE,
                 false));
-        scalar k = readScalar(solidProperties.lookup("k"));
+
+        List<scalar> kCoeffs = solidProperties.lookup("kCoeffs");
+        volScalarField k = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("k"));
+        k = dimensionedScalar("k", k.dimensions(), 0.0);
+        forAll(kCoeffs,order)
+        {
+            k += kCoeffs[order]*pow(T/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
+        }
 
         forAll(patches_, idxI)
         {
@@ -243,7 +250,7 @@ void DAOutputThermalCoupling::run(scalarList& output)
                     deltaCoeffs = 1 / d;
                 }
                 // NOTE: we continue to use the counterI from the first loop
-                output[counterI] = k * deltaCoeffs;
+                output[counterI] = k.boundaryField()[patchI][faceI] * deltaCoeffs;
                 counterI++;
             }
         }
