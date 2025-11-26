@@ -32,7 +32,7 @@ protected:
     scalar Cp_ = -9999.0;
 
     /// thermal conductivity for solid heatFlux calculation
-    List<scalar> kCoeffs;
+    List<scalar> kCoeffs_;
 
     /// wall heat flux field
     volScalarField wallHeatFlux_;

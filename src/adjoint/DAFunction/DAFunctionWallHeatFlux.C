@@ -95,7 +95,7 @@ DAFunctionWallHeatFlux::DAFunctionWallHeatFlux(
         // for solid, we need to read k from transportProperties
         // if (k_ < 0)
         // {
-        kCoeffs = solidProperties.lookup("kCoeffs");
+        kCoeffs_ = solidProperties.lookup("kCoeffs");
         // }
 
         wallHeatFlux_.dimensions().reset(dimensionSet(1, -2, 1, 1, 0, 0, 0));
@@ -221,20 +221,23 @@ scalar DAFunctionWallHeatFlux::calcFunction()
         const objectRegistry& db = mesh_.thisDb();
         const volScalarField& T = db.lookupObject<volScalarField>("T");
         const volScalarField::Boundary& TBf = T.boundaryField();
-        volScalarField k = db.lookupObject<volScalarField>("k");
-        k = dimensionedScalar("k", k.dimensions(), 0.0);
-        forAll(kCoeffs,order)
-        {
-            k += kCoeffs[order]*pow(T/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
-        }
+        const volScalarField k = db.lookupObject<volScalarField>("k");
         volScalarField::Boundary kBf = k.boundaryField();
-        
 
 
         forAll(wallHeatFluxBf, patchI)
         {
             if (!wallHeatFluxBf[patchI].coupled())
             {
+                /// update k from T 
+                forAll(wallHeatFluxBf[patchI], faceI)
+                {
+                    kBf[patchI][faceI] = 0;
+                    forAll(kCoeffs_, order)
+                    {
+                        kBf[patchI][faceI] += kCoeffs_[order]* pow(TBf[patchI][faceI], order);
+                    }
+                }
 
                 // use OpenFOAM's snGrad()
                 if (distanceMode_ == "default")

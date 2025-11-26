@@ -224,21 +224,8 @@ void DAInputThermalCoupling::run(const scalarList& input)
     else if (discipline_ == "thermal")
     {
         // for solid solvers Q = k * dT/dz, so kappa = k
-        IOdictionary solidProperties(
-            IOobject(
-                "solidProperties",
-                mesh_.time().constant(),
-                mesh_,
-                IOobject::MUST_READ,
-                IOobject::NO_WRITE,
-                false));
-        List<scalar> kCoeffs = solidProperties.lookup("kCoeffs");
-        volScalarField k = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("k"));
-        k = dimensionedScalar("k", k.dimensions(), 0.0);
-        forAll(kCoeffs,order)
-        {
-            k += kCoeffs[order]*pow(T/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
-        }
+
+        const volScalarField &k = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("k"));
 
         forAll(patches_, idxI)
         {

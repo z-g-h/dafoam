@@ -63,6 +63,9 @@ public:
 
     /// solve the primal equations
     virtual label solvePrimal();
+
+    /// update kappa 
+    void correctKappa();
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

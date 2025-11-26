@@ -99,11 +99,7 @@ label DAHeatTransferFoam::solvePrimal()
         DAUtility::primalResidualControl(solverT, printToScreen_, "T", daGlobalVarPtr_->primalMaxRes);
 
         /// update k
-        k = dimensionedScalar("k", k.dimensions(), 0.0);
-        forAll(kCoeffs,order)
-        {
-            k += kCoeffs[order]*pow(T/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
-        }
+        this->correctKappa();
 
         this->calcAllFunctions(printToScreen_);
 
@@ -120,6 +116,32 @@ label DAHeatTransferFoam::solvePrimal()
          << endl;
 
     return 0;
+}
+
+void DAHeatTransferFoam::correctKappa()
+{
+    volScalarField& k = kPtr_();
+    volScalarField& T = TPtr_();
+    forAll(k, cellI)
+    {
+        k[cellI] = 0;
+        forAll(kCoeffs, order)
+        {
+            k[cellI] += kCoeffs[order] * pow(T[cellI], order);
+        }
+    }
+    /// update boundary
+    forAll(k.boundaryField(), pathchI)
+    {
+        forAll(k.boundaryField()[patchI], faceI)
+        {
+            k.boundaryFieldRef[patchI][faceI] = 0;
+            forAll(kCoeffs, order)
+            {
+                k.boundaryFieldRef[patchI][faceI] += kCoeffs[order]* pow(T.boundaryField()[patchI][faceI], order);
+            }
+        }
+    }
 }
 
 } // End namespace Foam

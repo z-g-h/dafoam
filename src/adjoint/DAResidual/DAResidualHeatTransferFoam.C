@@ -96,10 +96,25 @@ void DAResidualHeatTransferFoam::updateIntermediateVariables()
         Update the intermediate variables that depend on the state variables
     */
     // update k
-    k_ = dimensionedScalar("k", k_.dimensions(), 0.0);
-    forAll(kCoeffs,order)
+    forAll(k_, cellI)
     {
-        k_ += kCoeffs[order]*pow(T_/dimensionedScalar("Tref", dimTemperature, 1.0), order) * dimensionedScalar("kUnit", dimPower / dimLength / dimTemperature, 1.0);
+        k_[cellI] = 0.0;
+        forAll(kCoeffs, order)
+        {
+            k_[cellI] += kCoeffs[order]*pow(T_[cellI], order);
+        }
+    }
+    /// update boundary
+    forAll(k_.boundaryField(), pathchI)
+    {
+        forAll(k_.boundaryField()[patchI], faceI)
+        {
+            k_.boundaryFieldRef[patchI][faceI] = 0;
+            forAll(kCoeffs, order)
+            {
+                k_.boundaryFieldRef[patchI][faceI] += kCoeffs[order]* pow(T_.boundaryField()[patchI][faceI], order);
+            }
+        }
     }
 }
 
