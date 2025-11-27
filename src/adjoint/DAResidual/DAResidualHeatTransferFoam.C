@@ -37,7 +37,7 @@ DAResidualHeatTransferFoam::DAResidualHeatTransferFoam(
             IOobject::MUST_READ,
             IOobject::NO_WRITE));
 
-    kCoeffs = solidProperties.lookup("kCoeffs");
+    kCoeffs_ = solidProperties.lookup("kCoeffs");
 
     const dictionary& allOptions = daOption.getAllOptions();
     if (allOptions.subDict("fvSource").toc().size() != 0)
@@ -99,20 +99,20 @@ void DAResidualHeatTransferFoam::updateIntermediateVariables()
     forAll(k_, cellI)
     {
         k_[cellI] = 0.0;
-        forAll(kCoeffs, order)
+        forAll(kCoeffs_, order)
         {
-            k_[cellI] += kCoeffs[order]*pow(T_[cellI], order);
+            k_[cellI] += kCoeffs_[order] * pow(T_[cellI], order);
         }
     }
     /// update boundary
-    forAll(k_.boundaryField(), pathchI)
+    forAll(k_.boundaryField(), patchI)
     {
         forAll(k_.boundaryField()[patchI], faceI)
         {
-            k_.boundaryFieldRef[patchI][faceI] = 0;
-            forAll(kCoeffs, order)
+            k_.boundaryFieldRef()[patchI][faceI] = 0;
+            forAll(kCoeffs_, order)
             {
-                k_.boundaryFieldRef[patchI][faceI] += kCoeffs[order]* pow(T_.boundaryField()[patchI][faceI], order);
+                k_.boundaryFieldRef()[patchI][faceI] += kCoeffs_[order] * pow(T_.boundaryField()[patchI][faceI], order);
             }
         }
     }

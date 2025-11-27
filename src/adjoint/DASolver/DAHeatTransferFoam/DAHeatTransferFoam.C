@@ -87,8 +87,6 @@ label DAHeatTransferFoam::solvePrimal()
             daFvSourcePtr_->calcFvSource(fvSource);
         }
 
-
-
         fvScalarMatrix TEqn(
             fvm::laplacian(k, T)
             + fvSource);
@@ -131,14 +129,14 @@ void DAHeatTransferFoam::correctKappa()
         }
     }
     /// update boundary
-    forAll(k.boundaryField(), pathchI)
+    forAll(k.boundaryField(), patchI)
     {
         forAll(k.boundaryField()[patchI], faceI)
         {
-            k.boundaryFieldRef[patchI][faceI] = 0;
+            k.boundaryFieldRef()[patchI][faceI] = 0;
             forAll(kCoeffs, order)
             {
-                k.boundaryFieldRef[patchI][faceI] += kCoeffs[order]* pow(T.boundaryField()[patchI][faceI], order);
+                k.boundaryFieldRef()[patchI][faceI] += kCoeffs[order] * pow(T.boundaryField()[patchI][faceI], order);
             }
         }
     }
