@@ -29,7 +29,7 @@
 
 #include "DAInput.H"
 #include "addToRunTimeSelectionTable.H"
-#include "mixedFvPatchFields.H"
+#include "aeroThermalCoupleFvPatchScalarField.H"
 #include "thermodynamicConstants.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
