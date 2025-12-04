@@ -479,6 +479,9 @@ class DAOPTION(object):
         ## such as mixingPlane, cyclicAMI. This options will cause a large time to compute the coloring.
         self.adjFieldCouplingColoring = False
 
+        ## PC type
+        self.DAPC = "ASM"
+
         ## The Petsc options for solving the adjoint linear equation. These options should work for
         ## most of the case. If the adjoint does not converge, try to increase pcFillLevel to 2, or
         ## try "jacMatReOrdering": "nd"

@@ -18,6 +18,7 @@
 #include "DAStateInfo.H"
 #include "DAModel.H"
 #include "DAIndex.H"
+#include "runTimeSelectionTables.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -46,6 +47,23 @@ protected:
     const DAOption& daOption_;
 
 public:
+    TypeName("DALinearEqn");
+    // Declare run-time constructor selection table
+    declareRunTimeSelectionTable(
+        autoPtr,
+        DALinearEqn,
+        dictionary,
+        (
+            const fvMesh& mesh,
+            const DAOption& daOption),
+        (
+            mesh,
+            daOption));
+
+    static autoPtr<DALinearEqn> New(
+        const fvMesh& mesh,
+        const DAOption& daOption);
+        
     /// Constructors
     DALinearEqn(
         const fvMesh& mesh,
@@ -59,10 +77,10 @@ public:
     // Members
 
     /// create a multi-level, Richardson KSP object
-    void createMLRKSP(
+    virtual void createMLRKSP(
         const Mat jacMat,
         const Mat jacPCMat,
-        KSP ksp);
+        KSP ksp) = 0;
 
     /// solve the linear equation given a ksp and right-hand-side vector
     label solveLinearEqn(
