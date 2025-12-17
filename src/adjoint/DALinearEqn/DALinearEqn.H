@@ -14,6 +14,7 @@
 #include "fvOptions.H"
 #include "surfaceFields.H"
 #include "DAOption.H"
+#include "DAIndex.H"
 #include "DAUtility.H"
 #include "DAStateInfo.H"
 #include "DAModel.H"
@@ -46,6 +47,9 @@ protected:
     /// Foam::DAOption object
     const DAOption& daOption_;
 
+    /// Foam::DAIndex;
+    const DAIndex& daIndex_;
+
 public:
     TypeName("DALinearEqn");
     // Declare run-time constructor selection table
@@ -55,19 +59,23 @@ public:
         dictionary,
         (
             const fvMesh& mesh,
-            const DAOption& daOption),
+            const DAOption& daOption,
+            const DAIndex& daIndex),
         (
             mesh,
-            daOption));
+            daOption,
+            daIndex));
 
     static autoPtr<DALinearEqn> New(
         const fvMesh& mesh,
-        const DAOption& daOption);
-        
+        const DAOption& daOption,
+        const DAIndex& daIndex);
+
     /// Constructors
     DALinearEqn(
         const fvMesh& mesh,
-        const DAOption& daOption);
+        const DAOption& daOption,
+        const DAIndex& daIndex);
 
     /// Destructor
     virtual ~DALinearEqn()

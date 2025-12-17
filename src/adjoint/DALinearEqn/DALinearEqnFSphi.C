@@ -5,18 +5,18 @@
 
 \*---------------------------------------------------------------------------*/
 
-#include "DALinearEqnASM.H"
+#include "DALinearEqnFSphi.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-defineTypeNameAndDebug(DALinearEqnASM, 0);
-addToRunTimeSelectionTable(DALinearEqn, DALinearEqnASM, dictionary);
+defineTypeNameAndDebug(DALinearEqnFSphi, 0);
+addToRunTimeSelectionTable(DALinearEqn, DALinearEqnFSphi, dictionary);
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-DALinearEqnASM::DALinearEqnASM(
+DALinearEqnFSphi::DALinearEqnFSphi(
     const fvMesh& mesh,
     const DAOption& daOption,
     const DAIndex& daIndex)
@@ -26,7 +26,7 @@ DALinearEqnASM::DALinearEqnASM(
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-void DALinearEqnASM::createMLRKSP(
+void DALinearEqnFSphi::createMLRKSP(
     const Mat jacMat,
     const Mat jacPCMat,
     KSP ksp)
@@ -72,14 +72,15 @@ void DALinearEqnASM::createMLRKSP(
         genksp: the set KSP object 
     */
 
+    PetscInt rstart, rend;
+    MatGetOwnershipRange(jacPCMat, &rstart, &rend);
+
     label gmresRestart =
         daOption_.getSubDictOption<label>("adjEqnOption", "gmresRestart");
-    label globalPCIters =
-        daOption_.getSubDictOption<label>("adjEqnOption", "globalPCIters");
     label asmOverlap =
         daOption_.getSubDictOption<label>("adjEqnOption", "asmOverlap");
-    label localPCIters =
-        daOption_.getSubDictOption<label>("adjEqnOption", "localPCIters");
+    label globalPCIters =
+        daOption_.getSubDictOption<label>("adjEqnOption", "globalPCIters");
     word jacMatReOrdering =
         daOption_.getSubDictOption<word>("adjEqnOption", "jacMatReOrdering");
     label pcFillLevel =
@@ -96,20 +97,15 @@ void DALinearEqnASM::createMLRKSP(
         daOption_.getSubDictOption<label>("adjEqnOption", "useMGSO");
     label printInfo =
         daOption_.getSubDictOption<label>("adjEqnOption", "printInfo");
-    scalar dropTol =
-        daOption_.getSubDictOption<scalar>("adjEqnOption", "dropTol");
-    scalar dropTcol =
-        daOption_.getSubDictOption<scalar>("adjEqnOption", "dropTcol");
-    label dropMaxRowCount =
-        daOption_.getSubDictOption<label>("adjEqnOption", "dropMaxRowCount");
 
-    PC MLRMasterPC, MLRGlobalPC;
-    PC MLRsubpc;
-    KSP MLRMasterPCKSP;
-    KSP* MLRsubksp;
+    if (daOption_.getOption<word>("adjStateOrdering") != "state")
+    {
+        FatalErrorIn("") << "adjStateOrdering must be state, when DAPC is FS" << abort(FatalError);
+    }
+
+    PC MLRGlobalPC;
     // ASM Preconditioner variables
-    PetscInt MLRoverlap; // width of subdomain overlap
-    PetscInt MLRnlocal, MLRfirst; // number of local subblocks, first local subblock
+    // PetscInt MLRoverlap; // width of subdomain overlap
 
     // Create linear solver context
     //KSPCreate(PETSC_COMM_WORLD, &ksp);
@@ -183,45 +179,30 @@ void DALinearEqnASM::createMLRKSP(
     // Since there is an extraneous matMult required when using the
     // richardson precondtiter with only 1 iteration, only use it when we need
     // to do more than 1 iteration.
-    if (globalPreConIts > 1)
-    {
-        // Extract preconditioning context for main KSP solver: (MLRMasterPC)
-        KSPGetPC(ksp, &MLRMasterPC);
-
-        // Set the type of MLRMasterPC to ksp. This lets us do multiple
-        // iterations of preconditioner application
-        PCSetType(MLRMasterPC, PCKSP);
-
-        // Get the ksp context from MLRMasterPC which is the actual preconditioner:
-        PCKSPGetKSP(MLRMasterPC, &MLRMasterPCKSP);
-
-        // MLRMasterPCKSP type will always be of type richardson. If the
-        // number  of iterations is set to 1, this ksp object is transparent.
-        KSPSetType(MLRMasterPCKSP, KSPRICHARDSON);
-
-        // Important to set the norm-type to None for efficiency.
-        KSPSetNormType(MLRMasterPCKSP, KSP_NORM_NONE);
-
-        // Do one iteration of the outer ksp preconditioners. Note the
-        // tolerances are unsued since we have set KSP_NORM_NONE
-        KSPSetTolerances(MLRMasterPCKSP, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, globalPreConIts);
-
-        // Get the 'preconditioner for MLRMasterPCKSP, called 'MLRGlobalPC'. This
-        // preconditioner is potentially run multiple times.
-        KSPGetPC(MLRMasterPCKSP, &MLRGlobalPC);
-    }
-    else
-    {
-        // Just pull out the pc-object if we are not using kspRichardson
-        KSPGetPC(ksp, &MLRGlobalPC);
-    }
+    // Just pull out the pc-object if we are not using kspRichardson
+    KSPGetPC(ksp, &MLRGlobalPC);
 
     // Set the type of 'MLRGlobalPC'. This will almost always be additive schwartz
-    PCSetType(MLRGlobalPC, PCASM);
+    PCSetType(MLRGlobalPC, PCFIELDSPLIT);
 
+    IS is_flow, is_phi;
+    label nLocalFaces = daIndex_.nLocalFaces;
+    ISCreateStride(PETSC_COMM_WORLD, nLocalFaces, rstart + daIndex_.stateLocalIndexOffset["phi"],  1, &is_phi);
+    {
+        // Info << "start phi offset is" << daIndex_.stateLocalIndexOffset["phi"] << endl;
+        PetscPrintf(MPI_COMM_SELF, "start phi offset is %d, nlocalAdjointStaets is %d. \n", daIndex_.stateLocalIndexOffset["phi"], daIndex_.nLocalAdjointStates);
+    }
+
+    ISComplement(is_phi, rstart, rend, &is_flow);
+
+    List<word> splitNames = {"phi", "flow"};
+    PCFieldSplitSetIS(MLRGlobalPC, "phi", is_phi);
+    PCFieldSplitSetIS(MLRGlobalPC, "flow", is_flow);
+
+    PCFieldSplitSetType(MLRGlobalPC, PC_COMPOSITE_MULTIPLICATIVE);
     // Set the overlap required
-    MLRoverlap = asmOverlap;
-    PCASMSetOverlap(MLRGlobalPC, MLRoverlap);
+
+
 
     //label KSPCalcEigen = readLabel(options.lookup("KSPCalcEigen"));
     //if (KSPCalcEigen)
@@ -231,92 +212,76 @@ void DALinearEqnASM::createMLRKSP(
 
     //Setup the main ksp context before extracting the subdomains
     KSPSetUp(ksp);
-
-    // Extract the ksp objects for each subdomain
-    PCASMGetSubKSP(MLRGlobalPC, &MLRnlocal, &MLRfirst, &MLRsubksp);
-
-    //Loop over the local blocks, setting various KSP options
-    //for each block.
-    PetscInt localPreConIts = localPCIters;
+    PetscInt nsub;
     word matOrdering = jacMatReOrdering;
     PetscInt localFillLevel = pcFillLevel;
-    PetscInt localDropMaxRowCount = dropMaxRowCount;
-    PetscScalar localDropTol, localDropTcol;
-    assignValueCheckAD(localDropTol, dropTol);
-    assignValueCheckAD(localDropTcol, dropTcol);
-    for (PetscInt i = 0; i < MLRnlocal; i++)
+    PetscInt asmoverlap = asmOverlap;
+    KSP* subfieldksp;
+    PCFieldSplitGetSubKSP(MLRGlobalPC, &nsub, &subfieldksp);
+    for (PetscInt i = 0; i < nsub; i++)
     {
-        // Since there is an extraneous matMult required when using the
-        // richardson precondtiter with only 1 iteration, only use it we need
-        // to do more than 1 iteration.
-        if (localPreConIts > 1)
+        PC subfieldpc;
+        KSPGetPC(subfieldksp[i], &subfieldpc);
+        PCSetType(subfieldpc, PCASM);
+        PCSetUp(subfieldpc);
+        PCASMSetOverlap(subfieldpc, asmoverlap);
+        KSP* subfieldkspsubdomain;
+        PetscInt firstsub;
+        PetscInt ndomain;
+        PCASMGetSubKSP(subfieldpc, &ndomain, &firstsub, &subfieldkspsubdomain);
+        PetscPrintf(MPI_COMM_SELF, "PCASM ndomain is: %d.\n", ndomain);
+        for (PetscInt j = 0; j < ndomain; j++)
         {
-            // This 'subksp' object will ALSO be of type richardson so we can do
-            // multiple iterations on the sub-domains
-            KSPSetType(MLRsubksp[i], KSPRICHARDSON);
+            PC subfieldsubdomianpc;
+            KSPSetType(subfieldkspsubdomain[j], KSPPREONLY);
+            KSPGetPC(subfieldkspsubdomain[j], &subfieldsubdomianpc);
+            PCSetType(subfieldsubdomianpc, PCILU);
+            PCFactorSetPivotInBlocks(subfieldsubdomianpc, PETSC_TRUE);
+            PCFactorSetShiftType(subfieldsubdomianpc, MAT_SHIFT_NONZERO);
+            PCFactorSetShiftAmount(subfieldsubdomianpc, PETSC_DECIDE);
+            // PCFactorSetDropTolerance(MLRsubpc, localDropTol, localDropTcol, localDropMaxRowCount);
+            // PCFactorSetAllowDiagonalFill(MLRsubpc, PETSC_TRUE);
 
-            // Set the number of iterations to do on local blocks. Tolerances are ignored.
-            KSPSetTolerances(MLRsubksp[i], PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, localPreConIts);
+            // Setup the matrix ordering for the subpc object:
+            // 'natural':'natural',
+            // 'rcm':'rcm',
+            // 'nested dissection':'nd' (default),
+            // 'one way dissection':'1wd',
+            // 'quotient minimum degree':'qmd',
+            MatOrderingType localMatrixOrdering;
+            if (matOrdering == "natural")
+            {
+                localMatrixOrdering = MATORDERINGNATURAL;
+            }
+            else if (matOrdering == "nd")
+            {
+                localMatrixOrdering = MATORDERINGND;
+            }
+            else if (matOrdering == "rcm")
+            {
+                localMatrixOrdering = MATORDERINGRCM;
+            }
+            else if (matOrdering == "1wd")
+            {
+                localMatrixOrdering = MATORDERING1WD;
+            }
+            else if (matOrdering == "qmd")
+            {
+                localMatrixOrdering = MATORDERINGQMD;
+            }
+            else
+            {
+                Info << "matOrdering not known. Using default: nested dissection" << endl;
+                localMatrixOrdering = MATORDERINGND;
+            }
+            PCFactorSetMatOrderingType(subfieldsubdomianpc, localMatrixOrdering);
 
-            // Again, norm_type is NONE since we don't want to check error
-            KSPSetNormType(MLRsubksp[i], KSP_NORM_NONE);
+            // Set the ILU parameters
+            PCFactorSetLevels(subfieldsubdomianpc, localFillLevel);
         }
-        else
-        {
-            KSPSetType(MLRsubksp[i], KSPPREONLY);
-        }
-
-        // Extract the preconditioner for subksp object.
-        KSPGetPC(MLRsubksp[i], &MLRsubpc);
-
-        // The subpc type will almost always be ILU
-        PCType localPCType = PCILU;
-        PCSetType(MLRsubpc, localPCType);
-
-        // Set PC factor
-        PCFactorSetPivotInBlocks(MLRsubpc, PETSC_TRUE);
-        PCFactorSetShiftType(MLRsubpc, MAT_SHIFT_NONZERO);
-        PCFactorSetShiftAmount(MLRsubpc, PETSC_DECIDE);
-        PCFactorSetDropTolerance(MLRsubpc, localDropTol, localDropTcol, localDropMaxRowCount);
-        PCFactorSetAllowDiagonalFill(MLRsubpc, PETSC_TRUE);
-
-        // Setup the matrix ordering for the subpc object:
-        // 'natural':'natural',
-        // 'rcm':'rcm',
-        // 'nested dissection':'nd' (default),
-        // 'one way dissection':'1wd',
-        // 'quotient minimum degree':'qmd',
-        MatOrderingType localMatrixOrdering;
-        if (matOrdering == "natural")
-        {
-            localMatrixOrdering = MATORDERINGNATURAL;
-        }
-        else if (matOrdering == "nd")
-        {
-            localMatrixOrdering = MATORDERINGND;
-        }
-        else if (matOrdering == "rcm")
-        {
-            localMatrixOrdering = MATORDERINGRCM;
-        }
-        else if (matOrdering == "1wd")
-        {
-            localMatrixOrdering = MATORDERING1WD;
-        }
-        else if (matOrdering == "qmd")
-        {
-            localMatrixOrdering = MATORDERINGQMD;
-        }
-        else
-        {
-            Info << "matOrdering not known. Using default: nested dissection" << endl;
-            localMatrixOrdering = MATORDERINGND;
-        }
-        PCFactorSetMatOrderingType(MLRsubpc, localMatrixOrdering);
-
-        // Set the ILU parameters
-        PCFactorSetLevels(MLRsubpc, localFillLevel);
     }
+
+    KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD);
 
     // Set the norm to unpreconditioned
     KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
@@ -336,14 +301,8 @@ void DALinearEqnASM::createMLRKSP(
     {
         Info << "Solver Type: " << kspObjectType << endl;
         Info << "GMRES Restart: " << restartGMRES << endl;
-        Info << "ASM Overlap: " << MLRoverlap << endl;
+        // Info << "ASM Overlap: " << MLRoverlap << endl;
         Info << "Global PC Iters: " << globalPreConIts << endl;
-        Info << "Local PC Iters: " << localPreConIts << endl;
-        Info << "Mat ReOrdering: " << matOrdering << endl;
-        Info << "ILU PC Fill Level: " << localFillLevel << endl;
-        Info << "ILU Drop Tolerance: " << localDropTol << endl;
-        Info << "ILU Column Pivot Tolerance: " << localDropTcol << endl;
-        Info << "ILU Max Allowed Number Count in a Row: " << localDropMaxRowCount << endl;
         Info << "GMRES Max Iterations: " << maxIts << endl;
         Info << "GMRES Relative Tolerance: " << rtol << endl;
         Info << "GMRES Absolute Tolerance: " << atol << endl;

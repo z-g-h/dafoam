@@ -26,7 +26,7 @@ daResidualPtr_.reset(DAResidual::New(solverName, mesh, daOptionPtr_(), daModelPt
 // initialize checkMesh
 daCheckMeshPtr_.reset(new DACheckMesh(daOptionPtr_(), runTime, mesh));
 
-daLinearEqnPtr_.reset(DALinearEqn::New(mesh, daOptionPtr_()));
+daLinearEqnPtr_.reset(DALinearEqn::New(mesh, daOptionPtr_(), daIndexPtr_()));
 
 this->setDAFunctionList();
 

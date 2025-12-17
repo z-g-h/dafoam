@@ -40,7 +40,8 @@ public:
     /// Constructors
     DALinearEqnASM(
         const fvMesh& mesh,
-        const DAOption& daOption);
+        const DAOption& daOption,
+        const DAIndex& daIndex);
 
     /// Destructor
     virtual ~DALinearEqnASM()

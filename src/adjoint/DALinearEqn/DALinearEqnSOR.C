@@ -18,8 +18,9 @@ addToRunTimeSelectionTable(DALinearEqn, DALinearEqnSOR, dictionary);
 
 DALinearEqnSOR::DALinearEqnSOR(
     const fvMesh& mesh,
-    const DAOption& daOption)
-    : DALinearEqn(mesh, daOption)
+    const DAOption& daOption,
+    const DAIndex& daIndex)
+    : DALinearEqn(mesh, daOption, daIndex)
 {
 }
 
@@ -87,7 +88,7 @@ void DALinearEqnSOR::createMLRKSP(
         daOption_.getSubDictOption<label>("adjEqnOption", "useMGSO");
     label printInfo =
         daOption_.getSubDictOption<label>("adjEqnOption", "printInfo");
-    scalar sorOmega = 
+    scalar sorOmega =
         daOption_.getSubDictOption<scalar>("adjEqnOption", "sorOmega");
 
     PC MLRMasterPC, MLRGlobalPC;
@@ -216,7 +217,6 @@ void DALinearEqnSOR::createMLRKSP(
     //Loop over the local blocks, setting various KSP options
     //for each block.
 
-
     // Set the norm to unpreconditioned
     KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
     // Setup monitor if necessary:
@@ -234,7 +234,7 @@ void DALinearEqnSOR::createMLRKSP(
     if (printInfo)
     {
         Info << "Solver Type: " << kspObjectType << endl;
-        Info << "PC Type: PCSOR" << endl; 
+        Info << "PC Type: PCSOR" << endl;
         Info << "GMRES Restart: " << restartGMRES << endl;
         Info << "Global PC Iters: " << globalPreConIts << endl;
         Info << "GMRES Max Iterations: " << maxIts << endl;

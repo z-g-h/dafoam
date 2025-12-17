@@ -18,16 +18,19 @@ defineRunTimeSelectionTable(DALinearEqn, dictionary);
 
 DALinearEqn::DALinearEqn(
     const fvMesh& mesh,
-    const DAOption& daOption)
+    const DAOption& daOption,
+    const DAIndex& daIndex)
     : mesh_(mesh),
-      daOption_(daOption)
+      daOption_(daOption),
+      daIndex_(daIndex)
 {
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 autoPtr<DALinearEqn> DALinearEqn::New(
     const fvMesh& mesh,
-    const DAOption& daOption)
+    const DAOption& daOption,
+    const DAIndex& daIndex)
 {
     // standard setup for runtime selectable classes
 
@@ -60,7 +63,7 @@ autoPtr<DALinearEqn> DALinearEqn::New(
 
     // child class found
     return autoPtr<DALinearEqn>(
-        cstrIter()(mesh, daOption));
+        cstrIter()(mesh, daOption,daIndex));
 }
 
 label DALinearEqn::solveLinearEqn(
