@@ -268,6 +268,9 @@ public:
         const label isPC,
         Mat dRdWT);
 
+    // compute dRdWT using AD for PC
+    void calcdRdWTAD(Mat dRdWT);
+
     /// Update the preconditioner matrix for the ksp object
     void updateKSPPCMat(
         Mat PCMat,

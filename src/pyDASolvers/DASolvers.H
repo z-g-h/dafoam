@@ -150,6 +150,12 @@ public:
     {
         DASolverPtr_->calcdRdWT(isPC, dRdWT);
     }
+    
+    /// compute dRdWT use AD
+    void calcdRdWTAD(Mat dRdWT)
+    {
+        DASolverPtr_->calcdRdWTAD(dRdWT);
+    }
 
     /// Update the preconditioner matrix for the ksp object
     void updateKSPPCMat(

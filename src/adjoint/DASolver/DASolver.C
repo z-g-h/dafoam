@@ -922,6 +922,155 @@ void DASolver::calcdRdWT(
     daJacCon.clear();
 }
 
+void DASolver::calcdRdWTAD(Mat dRdWT)
+{
+#ifdef CODI_ADR
+    // initialize DAJacCon object
+    word modelType = "dRdW";
+    DAJacCon daJacCon(
+        modelType,
+        meshPtr_(),
+        daOptionPtr_(),
+        daModelPtr_(),
+        daIndexPtr_());
+
+    dictionary options;
+    const HashTable<List<List<word>>>& stateResConInfo = daStateInfoPtr_->getStateResConInfo();
+
+    // need to reduce the JacCon for PC to reduce memory usage
+    HashTable<List<List<word>>> stateResConInfoReduced = stateResConInfo;
+
+    dictionary maxResConLv4JacPCMat = daOptionPtr_->getAllOptions().subDict("maxResConLv4JacPCMat");
+
+    this->reduceStateResConLevel(maxResConLv4JacPCMat, stateResConInfoReduced);
+    options.set("stateResConInfo", stateResConInfoReduced);
+
+    daJacCon.setupJacConPreallocation(options);
+
+    daJacCon.initializeJacCon(options);
+
+    daJacCon.setupJacCon(options);
+    Info << "dRdWCon Created. " << runTimePtr_->elapsedCpuTime() << " s" << endl;
+
+    daJacCon.readJacConColoring();
+
+    label localSize = daIndexPtr_->nLocalAdjointStates;
+    MatSetSizes(
+        dRdWT,
+        localSize,
+        localSize,
+        PETSC_DETERMINE,
+        PETSC_DETERMINE);
+    MatSetFromOptions(dRdWT);
+    daJacCon.preallocatedRdW(dRdWT, 1);
+    MatSetUp(dRdWT);
+    MatZeroEntries(dRdWT);
+    Info << "Partial derivative matrix created. " << meshPtr_->time().elapsedCpuTime() << " s" << endl;
+    Info << "Calculate partial derivative matrix using AD. " << endl; 
+
+    // define AD for input and output \bar{x} = dRdWT * \bar{y}
+    PetscScalar yBar[localSize], xBar[localSize];
+
+    label nColors = daJacCon.getNJacConColors();
+    label printInterval = daOptionPtr_->getOption<label>("printInterval");
+
+    const Vec jacConColors = daJacCon.getJacConColor();
+    PetscInt Istart, Iend;
+    VecGetOwnershipRange(jacConColors, &Istart, &Iend);
+
+    const PetscScalar* colorArray;
+    VecGetArrayRead(jacConColors, &colorArray);
+
+    /// define row number. because of the coloring the dRdWT.
+    Vec coloredRow;
+    VecCreate(PETSC_COMM_WORLD, &coloredRow);
+    VecSetSizes(coloredRow, localSize, PETSC_DECIDE);
+    VecSetFromOptions(coloredRow);
+    const PetscScalar* coloredRowArray;
+
+    scalar jacLowerBoundValue = daOptionPtr_->getSubDictOption<scalar>("jacLowerBounds", "dRdWPC");
+    PetscScalar jacLowerBound;
+    assignValueCheckAD(jacLowerBound, jacLowerBoundValue);
+
+    this->initializeGlobalADTape4dRdWT();
+
+    for (label color = 0; color < nColors; color++)
+    {
+        PetscScalar eTime = meshPtr_->time().elapsedCpuTime();
+        // print progress
+        if (color % printInterval == 0 or color == nColors - 1)
+        {
+            Info << "dRdWTPC : " << color << " of " << nColors
+                 << ", ExecutionTime: " << eTime << " s" << endl;
+        }
+
+        for (label i = Istart; i < Iend; i++)
+        {
+            label relIdx = i - Istart;
+            label colorJ = colorArray[relIdx];
+            if (colorJ == color)
+            {
+                yBar[relIdx] = 1.0;
+            }
+            else
+            {
+                yBar[relIdx] = 0.0;
+            }
+        }
+
+        this->assignVec2ResidualGradient(yBar);
+
+        this->globalADTape_.evaluate();
+
+        this->assignStateGradient2Vec(xBar);
+
+        this->normalizeGradientVec(xBar);
+
+        daJacCon.calcColoredColumns(color, coloredRow);
+        VecGetArrayRead(coloredRow, &coloredRowArray);
+
+        for (label i = Istart; i < Iend; i++)
+        {
+            label relIdx = i - Istart;
+            label rowI = coloredRowArray[relIdx];
+
+            if (rowI >= 0)
+            {
+                label colI = i;
+                PetscScalar val = xBar[relIdx];
+                if (jacLowerBound < 1.0e-16 || fabs(val) > jacLowerBound || colI == rowI)
+                {
+                    MatSetValue(dRdWT, colI, rowI, val, INSERT_VALUES);
+                }
+            }
+        }
+
+        this->globalADTape_.clearAdjoints();
+    }
+
+    VecRestoreArrayRead(jacConColors, &colorArray);
+    
+    MatAssemblyBegin(dRdWT, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(dRdWT, MAT_FINAL_ASSEMBLY);
+
+    wordList writeJacobians;
+    daOptionPtr_->getAllOptions().readEntry<wordList>("writeJacobians", writeJacobians);
+    if (writeJacobians.found("dRdWT") || writeJacobians.found("all"))
+    {
+        DAUtility::writeMatrixBinary(dRdWT, "dRdWTPC");
+    }
+
+    daJacCon.clear();
+    VecDestroy(&coloredRow);
+
+    if (daOptionPtr_->getOption<label>("debug"))
+    {
+        daIndexPtr_->printMatChars(dRdWT);
+    }
+
+#endif
+}
+
 void DASolver::updateKSPPCMat(
     Mat PCMat,
     KSP ksp)
