@@ -110,7 +110,7 @@ label DALinearEqn::solveLinearEqn(
     KSPGetConvergedReason(ksp, &reason);
     PetscPrintf(
         PETSC_COMM_WORLD,
-        "Main iteration %D KSP Residual norm %14.12e %.2f s \n",
+        "Main iteration %d KSP Residual norm %14.12e %.2f s \n",
         its,
         finalResNorm,
         this->getRunTime());
@@ -166,7 +166,7 @@ PetscErrorCode DALinearEqn::myKSPMonitor(
     {
         PetscPrintf(
             PETSC_COMM_WORLD,
-            "Main iteration %D KSP Residual norm %14.12e %.2f s\n",
+            "Main iteration %d KSP Residual norm %14.12e %.2f s\n",
             n,
             rnorm,
             runTime);

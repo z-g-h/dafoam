@@ -307,6 +307,14 @@ void DALinearEqnASM::createMLRKSP(
         {
             localMatrixOrdering = MATORDERINGQMD;
         }
+        else if (matOrdering == "amd")
+        {
+            localMatrixOrdering = MATORDERINGAMD;
+        }
+        else if (matOrdering == "metisnd")
+        {
+            localMatrixOrdering = MATORDERINGMETISND;
+        }
         else
         {
             Info << "matOrdering not known. Using default: nested dissection" << endl;
