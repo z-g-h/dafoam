@@ -22,6 +22,7 @@ DALinearEqn/DALinearEqnSOR.C
 DALinearEqn/DALinearEqnGASM.C
 DALinearEqn/DALinearEqnFS.C
 DALinearEqn/DALinearEqnFSphi.C
+DALinearEqn/DALinearEqnGAMG.C
 
 DAPartDeriv/DAPartDeriv.C
 

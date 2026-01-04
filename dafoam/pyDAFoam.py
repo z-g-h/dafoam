@@ -482,7 +482,7 @@ class DAOPTION(object):
         ## PC type
         self.DAPC = "ASM"
 
-        self.PCMode = "reverse"
+        self.PCMode = ""
 
         ## The Petsc options for solving the adjoint linear equation. These options should work for
         ## most of the case. If the adjoint does not converge, try to increase pcFillLevel to 2, or

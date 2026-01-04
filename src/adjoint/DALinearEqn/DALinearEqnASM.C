@@ -96,12 +96,6 @@ void DALinearEqnASM::createMLRKSP(
         daOption_.getSubDictOption<label>("adjEqnOption", "useMGSO");
     label printInfo =
         daOption_.getSubDictOption<label>("adjEqnOption", "printInfo");
-    scalar dropTol =
-        daOption_.getSubDictOption<scalar>("adjEqnOption", "dropTol");
-    scalar dropTcol =
-        daOption_.getSubDictOption<scalar>("adjEqnOption", "dropTcol");
-    label dropMaxRowCount =
-        daOption_.getSubDictOption<label>("adjEqnOption", "dropMaxRowCount");
 
     PC MLRMasterPC, MLRGlobalPC;
     PC MLRsubpc;
@@ -240,10 +234,6 @@ void DALinearEqnASM::createMLRKSP(
     PetscInt localPreConIts = localPCIters;
     word matOrdering = jacMatReOrdering;
     PetscInt localFillLevel = pcFillLevel;
-    PetscInt localDropMaxRowCount = dropMaxRowCount;
-    PetscScalar localDropTol, localDropTcol;
-    assignValueCheckAD(localDropTol, dropTol);
-    assignValueCheckAD(localDropTcol, dropTcol);
     for (PetscInt i = 0; i < MLRnlocal; i++)
     {
         // Since there is an extraneous matMult required when using the
@@ -277,8 +267,6 @@ void DALinearEqnASM::createMLRKSP(
         PCFactorSetPivotInBlocks(MLRsubpc, PETSC_TRUE);
         PCFactorSetShiftType(MLRsubpc, MAT_SHIFT_NONZERO);
         PCFactorSetShiftAmount(MLRsubpc, PETSC_DECIDE);
-        PCFactorSetDropTolerance(MLRsubpc, localDropTol, localDropTcol, localDropMaxRowCount);
-        PCFactorSetAllowDiagonalFill(MLRsubpc, PETSC_TRUE);
 
         // Setup the matrix ordering for the subpc object:
         // 'natural':'natural',
@@ -323,7 +311,7 @@ void DALinearEqnASM::createMLRKSP(
         PCFactorSetMatOrderingType(MLRsubpc, localMatrixOrdering);
 
         // Set the ILU parameters
-        PCFactorSetLevels(MLRsubpc, localFillLevel);
+        // PCFactorSetLevels(MLRsubpc, localFillLevel);
     }
 
     // Set the norm to unpreconditioned
@@ -349,9 +337,6 @@ void DALinearEqnASM::createMLRKSP(
         Info << "Local PC Iters: " << localPreConIts << endl;
         Info << "Mat ReOrdering: " << matOrdering << endl;
         Info << "ILU PC Fill Level: " << localFillLevel << endl;
-        Info << "ILU Drop Tolerance: " << localDropTol << endl;
-        Info << "ILU Column Pivot Tolerance: " << localDropTcol << endl;
-        Info << "ILU Max Allowed Number Count in a Row: " << localDropMaxRowCount << endl;
         Info << "GMRES Max Iterations: " << maxIts << endl;
         Info << "GMRES Relative Tolerance: " << rtol << endl;
         Info << "GMRES Absolute Tolerance: " << atol << endl;
