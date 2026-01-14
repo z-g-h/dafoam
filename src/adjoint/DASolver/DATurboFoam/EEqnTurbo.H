@@ -2,15 +2,13 @@
     volScalarField& he = thermo.he();
     volSymmTensorField Teff = -turbulencePtr_->devRhoReff();
 
-    URel == U;
-    MRF.makeRelative(URel);
-
     fvScalarMatrix EEqn(
         fvm::div(phi, he)
         + (he.name() == "e"
                ? fvc::div(phi, volScalarField("Ekp", 0.5 * magSqr(U) + p / rho))
-               : fvc::div(phi, volScalarField("K", 0.5 * magSqr(U))) - fvc::div(Teff.T() & U) + fvc::div(p * (U - URel)))
-        - fvm::Sp(fvc::div(phi), he)
+               : fvc::div(phi, volScalarField("K", 0.5 * magSqr(U))))
+        + fvc::div(MRF.phi(), p)
+        - fvc::div(Teff.T() & U)
         - fvm::laplacian(turbulencePtr_->alphaEff(), he));
 
     EEqn.relax();

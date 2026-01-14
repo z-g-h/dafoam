@@ -353,6 +353,66 @@ void Foam::MRFZoneDF::makeRelative(
     makeRelativeRhoFlux(rho, phi);
 }
 
+void Foam::MRFZoneDF::makeAbsolute(volVectorField& U) const
+{
+    if (cellZoneID_ == -1)
+    {
+        return;
+    }
+
+    const volVectorField& C = mesh_.C();
+
+    const vector Omega = this->Omega();
+
+    const labelList& cells = mesh_.cellZones()[cellZoneID_];
+
+    forAll(cells, i)
+    {
+        label celli = cells[i];
+        U[celli] += (Omega ^ (C[celli] - origin_));
+    }
+
+    // Included patches
+    volVectorField::Boundary& Ubf = U.boundaryFieldRef();
+
+    forAll(includedFaces_, patchi)
+    {
+        forAll(includedFaces_[patchi], i)
+        {
+            label patchFacei = includedFaces_[patchi][i];
+            Ubf[patchi][patchFacei] =
+                (Omega ^ (C.boundaryField()[patchi][patchFacei] - origin_));
+        }
+    }
+
+    // Excluded patches
+    forAll(excludedFaces_, patchi)
+    {
+        forAll(excludedFaces_[patchi], i)
+        {
+            label patchFacei = excludedFaces_[patchi][i];
+            Ubf[patchi][patchFacei] +=
+                (Omega ^ (C.boundaryField()[patchi][patchFacei] - origin_));
+        }
+    }
+}
+
+
+void Foam::MRFZoneDF::makeAbsolute(surfaceScalarField& phi) const
+{
+    makeAbsoluteRhoFlux(geometricOneField(), phi);
+}
+
+
+void Foam::MRFZoneDF::makeAbsolute
+(
+    const surfaceScalarField& rho,
+    surfaceScalarField& phi
+) const
+{
+    makeAbsoluteRhoFlux(rho, phi);
+}
+
 void Foam::MRFZoneDF::correctBoundaryVelocity(volVectorField& U) const
 {
     if (!active_)

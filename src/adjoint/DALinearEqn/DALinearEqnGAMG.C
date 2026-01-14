@@ -130,11 +130,12 @@ void DALinearEqnGAMG::createMLRKSP(
 
     // First, KSPSetFromOptions MUST be called
     PetscOptionsSetValue(NULL, "-ksp_view_eigenvalues", NULL);
+    PetscOptionsSetValue(NULL, "-ksp_view", NULL);
     KSPSetFromOptions(ksp);
 
     // Set GMRES
     // Set the type of solver to GMRES
-    KSPType kspObjectType = KSPGMRES;
+    KSPType kspObjectType = KSPFGMRES;
 
     KSPSetType(ksp, kspObjectType);
     // Set the gmres restart
@@ -211,29 +212,31 @@ void DALinearEqnGAMG::createMLRKSP(
     PCFieldSplitGetSubKSP(MLRGlobalPC, &nsub, &subfieldksp);
     this->setPCASM(subfieldksp[0]);
 
-    Mat flowPCMat;
-    KSPGetOperators(subfieldksp[1], NULL, &flowPCMat);
-
+    Mat flowPCMat, flowMat;
+    KSPGetOperators(subfieldksp[1], &flowMat, &flowPCMat);
     MatSetBlockSize(flowPCMat, 7);
+
+
+    KSPSetOperators(subfieldksp[1], flowMat, flowPCMat);
     /// define GAMG
     PetscInt Nlevel;
     PC subfieldpc;
     KSPSetType(subfieldksp[1], KSPPREONLY);
     KSPGetPC(subfieldksp[1], &subfieldpc);
-    // PCSetType(subfieldpc,PCGAMG);
-    // PCSetUp(subfieldpc);
-    // PCMGGetLevels(subfieldpc, &Nlevel);
-    // for (PetscInt level = 0; level < Nlevel; level++)
-    // {
-    //     KSP smoother;
-    //     PC spc;
-    //     PCMGGetSmoother(subfieldpc, level, &smoother);
-    //     KSPSetType(smoother, KSPRICHARDSON);
-    //     KSPGetPC(smoother, &spc);
-    //     PCSetType(spc, PCSOR);
-    // }
-    PCSetType(subfieldpc,PCHYPRE);
-    PCHYPRESetType(subfieldpc, "boomeramg");
+    PCSetType(subfieldpc,PCGAMGAGG);
+    PCSetUp(subfieldpc);
+    PCMGGetLevels(subfieldpc, &Nlevel);
+
+    for (PetscInt level = 0; level < Nlevel; level++)
+    {
+        KSP smoother;
+        PCMGGetSmoother(subfieldpc, level, &smoother);
+        // this->setPCASM(smoother);
+        PC levelPC;
+        KSPSetType(smoother, KSPCHEBYSHEV);
+        KSPGetPC(smoother, &levelPC);
+        PCSORSetOmega(levelPC, 1.0);
+    }
 
     // Set the norm to unpreconditioned
     KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
@@ -248,6 +251,8 @@ void DALinearEqnGAMG::createMLRKSP(
     assignValueCheckAD(rtol, gmresRelTol);
     assignValueCheckAD(atol, gmresAbsTol);
     KSPSetTolerances(ksp, rtol, atol, PETSC_DEFAULT, maxIts);
+
+    KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD);
 
     if (printInfo)
     {
@@ -286,7 +291,7 @@ void DALinearEqnGAMG::setPCASM(KSP ksp)
         PC subpc;
         // This 'subksp' object will ALSO be of type richardson so we can do
         // multiple iterations on the sub-domains
-        KSPSetType(subksp[i], KSPRICHARDSON);
+        KSPSetType(subksp[i], KSPCHEBYSHEV);
 
         // Set the number of iterations to do on local blocks. Tolerances are ignored.
         KSPSetTolerances(subksp[i], PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT, localPCIters);

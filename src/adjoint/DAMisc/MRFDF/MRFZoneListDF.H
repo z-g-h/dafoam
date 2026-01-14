@@ -93,6 +93,9 @@ public:
         const volScalarField& rho,
         const volVectorField& U) const;
 
+    //- Return the MRF absolute flux
+    tmp<surfaceScalarField> phi() const;
+
     //- Make the given absolute velocity relative within the MRF region
     void makeRelative(volVectorField& U) const;
 

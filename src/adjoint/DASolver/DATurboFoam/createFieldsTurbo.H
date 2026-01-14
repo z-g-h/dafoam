@@ -32,16 +32,6 @@ UPtr_.reset(
         mesh));
 volVectorField& U = UPtr_();
 
-URelPtr_.reset(
-    new volVectorField(
-        IOobject(
-            "URel",
-            runTime.timeName(),
-            mesh,
-            IOobject::READ_IF_PRESENT,
-            IOobject::AUTO_WRITE),
-        U));
-
 #include "compressibleCreatePhiPython.H"
 
 pressureControlPtr_.reset(new pressureControl(p, rho, simple.dict()));

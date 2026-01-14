@@ -79,8 +79,12 @@ void DALinearEqnFSphi::createMLRKSP(
         daOption_.getSubDictOption<label>("adjEqnOption", "gmresRestart");
     label asmOverlap =
         daOption_.getSubDictOption<label>("adjEqnOption", "asmOverlap");
-    label globalPCIters =
-        daOption_.getSubDictOption<label>("adjEqnOption", "globalPCIters");
+    // label localPCIters =
+    //     daOption_.getSubDictOption<label>("adjEqnOption", "localPCIters");
+    // scalar localRelTol = 
+    //     daOption_.getSubDictOption<scalar>("adjEqnOption", "localRelTol");
+    // scalar localAbsTol = 
+    //     daOption_.getSubDictOption<scalar>("adjEqnOption", "localAbsTol");
     word jacMatReOrdering =
         daOption_.getSubDictOption<word>("adjEqnOption", "jacMatReOrdering");
     label pcFillLevel =
@@ -168,9 +172,6 @@ void DALinearEqnFSphi::createMLRKSP(
     // Set the preconditioner side
     KSPSetPCSide(ksp, PC_RIGHT);
 
-    // Set global and local PC iters
-    PetscInt globalPreConIts = globalPCIters;
-
     // Since there is an extraneous matMult required when using the
     // richardson precondtiter with only 1 iteration, only use it when we need
     // to do more than 1 iteration.
@@ -197,10 +198,9 @@ void DALinearEqnFSphi::createMLRKSP(
     PCFieldSplitSetIS(MLRGlobalPC, "phi", is_phi);
     PCFieldSplitSetIS(MLRGlobalPC, "flow", is_flow);
 
-    PCFieldSplitSetType(MLRGlobalPC, PC_COMPOSITE_MULTIPLICATIVE);
-    // Set the overlap required
-
-
+    PCFieldSplitSetType(MLRGlobalPC, PC_COMPOSITE_SCHUR);
+    PCFieldSplitSetSchurPre(MLRGlobalPC, PC_FIELDSPLIT_SCHUR_PRE_SELFP, NULL);
+    PCFieldSplitSetSchurFactType(MLRGlobalPC, PC_FIELDSPLIT_SCHUR_FACT_FULL);
 
     //label KSPCalcEigen = readLabel(options.lookup("KSPCalcEigen"));
     //if (KSPCalcEigen)
@@ -211,23 +211,30 @@ void DALinearEqnFSphi::createMLRKSP(
     //Setup the main ksp context before extracting the subdomains
     KSPSetUp(ksp);
     PetscInt nsub;
-    word matOrdering = jacMatReOrdering;
-    PetscInt localFillLevel = pcFillLevel;
-    PetscInt asmoverlap = asmOverlap;
     KSP* subfieldksp;
+    // PetscScalar localKSPRelTol, localKSPAbsTol;
+    // assignValueCheckAD(localKSPRelTol, localRelTol);
+    // assignValueCheckAD(localKSPAbsTol, localAbsTol);
     PCFieldSplitGetSubKSP(MLRGlobalPC, &nsub, &subfieldksp);
-    for (PetscInt i = 0; i < nsub; i++)
+    
+    // processed KSP_flow
+    // Mat flowPC, flowPCblock;
+
+    for (PetscInt i = 0; i< nsub; i++)
     {
         PC subfieldpc;
+        // KSPSetType(subfieldksp[i], KSPGMRES);
+        // KSPSetTolerances(subfieldksp[i], localKSPRelTol, localKSPAbsTol, PETSC_DEFAULT, localPCIters);
+        // KSPSetNormType(subfieldksp[i], KSP_NORM_NONE);
+        KSPSetType(subfieldksp[i], KSPPREONLY);
         KSPGetPC(subfieldksp[i], &subfieldpc);
         PCSetType(subfieldpc, PCASM);
         PCSetUp(subfieldpc);
-        PCASMSetOverlap(subfieldpc, asmoverlap);
+        PCASMSetOverlap(subfieldpc, asmOverlap);
         KSP* subfieldkspsubdomain;
         PetscInt firstsub;
         PetscInt ndomain;
         PCASMGetSubKSP(subfieldpc, &ndomain, &firstsub, &subfieldkspsubdomain);
-        PetscPrintf(MPI_COMM_SELF, "PCASM ndomain is: %d.\n", ndomain);
         for (PetscInt j = 0; j < ndomain; j++)
         {
             PC subfieldsubdomianpc;
@@ -247,31 +254,31 @@ void DALinearEqnFSphi::createMLRKSP(
             // 'one way dissection':'1wd',
             // 'quotient minimum degree':'qmd',
             MatOrderingType localMatrixOrdering;
-            if (matOrdering == "natural")
+            if (jacMatReOrdering == "natural")
             {
                 localMatrixOrdering = MATORDERINGNATURAL;
             }
-            else if (matOrdering == "nd")
+            else if (jacMatReOrdering == "nd")
             {
                 localMatrixOrdering = MATORDERINGND;
             }
-            else if (matOrdering == "rcm")
+            else if (jacMatReOrdering == "rcm")
             {
                 localMatrixOrdering = MATORDERINGRCM;
             }
-            else if (matOrdering == "1wd")
+            else if (jacMatReOrdering == "1wd")
             {
                 localMatrixOrdering = MATORDERING1WD;
             }
-            else if (matOrdering == "qmd")
+            else if (jacMatReOrdering == "qmd")
             {
                 localMatrixOrdering = MATORDERINGQMD;
             }
-            else if (matOrdering == "amd")
+            else if (jacMatReOrdering == "amd")
             {
                 localMatrixOrdering = MATORDERINGAMD;
             }
-            else if (matOrdering == "metisnd")
+            else if (jacMatReOrdering == "metisnd")
             {
                 localMatrixOrdering = MATORDERINGMETISND;
             }
@@ -283,7 +290,7 @@ void DALinearEqnFSphi::createMLRKSP(
             PCFactorSetMatOrderingType(subfieldsubdomianpc, localMatrixOrdering);
 
             // Set the ILU parameters
-            PCFactorSetLevels(subfieldsubdomianpc, localFillLevel);
+            PCFactorSetLevels(subfieldsubdomianpc, pcFillLevel);
         }
     }
 
@@ -307,8 +314,10 @@ void DALinearEqnFSphi::createMLRKSP(
     {
         Info << "Solver Type: " << kspObjectType << endl;
         Info << "GMRES Restart: " << restartGMRES << endl;
-        // Info << "ASM Overlap: " << MLRoverlap << endl;
-        Info << "Global PC Iters: " << globalPreConIts << endl;
+        Info << "ASM Overlap: " << asmOverlap << endl;
+        // Info << "Local PC Iters: " << localPCIters << endl;
+        Info << "Mat ReOrdering: " << jacMatReOrdering << endl;
+        Info << "ILU PC Fill Level: " << pcFillLevel << endl;        
         Info << "GMRES Max Iterations: " << maxIts << endl;
         Info << "GMRES Relative Tolerance: " << rtol << endl;
         Info << "GMRES Absolute Tolerance: " << atol << endl;

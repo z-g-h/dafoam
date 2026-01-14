@@ -311,7 +311,7 @@ void DALinearEqnASM::createMLRKSP(
         PCFactorSetMatOrderingType(MLRsubpc, localMatrixOrdering);
 
         // Set the ILU parameters
-        // PCFactorSetLevels(MLRsubpc, localFillLevel);
+        PCFactorSetLevels(MLRsubpc, localFillLevel);
     }
 
     // Set the norm to unpreconditioned

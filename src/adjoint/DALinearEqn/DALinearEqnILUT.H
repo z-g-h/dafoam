@@ -8,8 +8,8 @@
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef DALinearEqnFS_H
-#define DALinearEqnFS_H
+#ifndef DALinearEqnILUT_H
+#define DALinearEqnILUT_H
 
 #include "DALinearEqn.H"
 #include "addToRunTimeSelectionTable.H"
@@ -23,28 +23,28 @@ namespace Foam
                        Class DALinearEqn Declaration
 \*---------------------------------------------------------------------------*/
 
-class DALinearEqnFS
+class DALinearEqnILUT
     : public DALinearEqn
 {
 
 private:
     /// Disallow default bitwise copy construct
-    DALinearEqnFS(const DALinearEqnFS&);
+    DALinearEqnILUT(const DALinearEqnILUT&);
 
     /// Disallow default bitwise assignment
-    void operator=(const DALinearEqnFS&);
+    void operator=(const DALinearEqnILUT&);
 
 public:
-    TypeName("FS");
+    TypeName("ILUT");
 
     /// Constructors
-    DALinearEqnFS(
+    DALinearEqnILUT(
         const fvMesh& mesh,
         const DAOption& daOption,
         const DAIndex& daIndex);
 
     /// Destructor
-    virtual ~DALinearEqnFS()
+    virtual ~DALinearEqnILUT()
     {
     }
 
@@ -55,8 +55,6 @@ public:
         const Mat jacMat,
         const Mat jacPCMat,
         KSP ksp);
-
-    void setPCASM(KSP ksp);
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
