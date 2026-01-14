@@ -81,6 +81,24 @@ autoPtr<DAStateInfo> DAStateInfo::New(
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+void DAStateInfo::removeNutResidualModelCon(List<List<word>>& stateCon)
+{
+
+    forAll(stateCon, idxI)
+    {
+        List<word> tmpStateCon;
+        forAll(stateCon[idxI], idxJ)
+        {
+            word conStateName = stateCon[idxI][idxJ];
+            if (conStateName != "nut")
+            {
+                tmpStateCon.append(conStateName);
+            }
+        }
+        stateCon[idxI].swap(tmpStateCon);
+    }
+}
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam

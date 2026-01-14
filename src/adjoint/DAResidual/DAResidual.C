@@ -150,14 +150,21 @@ void DAResidual::masterFunction(
         // now update intermediate states and boundry conditions
         this->correctBoundaryConditions();
         this->updateIntermediateVariables();
-        daModel.correctBoundaryConditions();
-        daModel.updateIntermediateVariables();
+        if (!daOption_.getOption<bool>("frozenTurbulence"))
+        {
+            daModel.correctBoundaryConditions();
+            daModel.updateIntermediateVariables();
+        }
         // if there are special boundary conditions, apply special treatment
         daField_.specialBCTreatment();
     }
 
     this->calcResiduals(options);
-    daModel.calcResiduals(options);
+    
+    if (!daOption_.getOption<bool>("frozenTurbulence"))
+    {
+        daModel.calcResiduals(options);
+    }
 
     if (setResVec)
     {

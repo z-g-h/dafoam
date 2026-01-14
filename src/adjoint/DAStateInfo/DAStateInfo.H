@@ -102,6 +102,9 @@ public:
     {
         return stateResConInfo_;
     }
+    
+    /// remove model state from stateResConInfo_
+    void removeNutResidualModelCon(List<List<word>>& stateCon);
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

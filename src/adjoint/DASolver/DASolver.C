@@ -2602,7 +2602,10 @@ void DASolver::calcResiduals(label isPC)
     dictionary options;
     options.set("isPC", isPC);
     daResidualPtr_->calcResiduals(options);
-    daModelPtr_->calcResiduals(options);
+    if (!daOptionPtr_->getOption<bool>("frozenTurbulence"))
+    {
+        daModelPtr_->calcResiduals(options);
+    }
 }
 
 void DASolver::updateStateBoundaryConditions()
@@ -2618,8 +2621,11 @@ void DASolver::updateStateBoundaryConditions()
     {
         daResidualPtr_->correctBoundaryConditions();
         daResidualPtr_->updateIntermediateVariables();
-        daModelPtr_->correctBoundaryConditions();
-        daModelPtr_->updateIntermediateVariables();
+        if (!daOptionPtr_->getOption<bool>("frozenTurbulence"))
+        {
+            daModelPtr_->correctBoundaryConditions();
+            daModelPtr_->updateIntermediateVariables();
+        }
     }
 
     // if we have regression models, we also need to update them because they will update the fields
