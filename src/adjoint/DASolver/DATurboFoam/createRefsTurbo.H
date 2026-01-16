@@ -7,7 +7,6 @@ fluidThermo& thermo = pThermoPtr_();
 volScalarField& p = thermo.p();
 volScalarField& rho = rhoPtr_();
 volVectorField& U = UPtr_();
-volVectorField& URel = URelPtr_();
 surfaceScalarField& phi = phiPtr_();
 scalar& cumulativeContErr = cumulativeContErr_;
 pressureControl& pressureControl = pressureControlPtr_();

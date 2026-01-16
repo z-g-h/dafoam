@@ -126,6 +126,14 @@ class MRFZoneDF
         Field<scalar>& phi,
         const label patchi) const;
 
+    //- Make the given relative mass/vol flux absolute within the MRF region
+    template<class RhoFieldType>
+    void makeAbsoluteRhoFlux
+    (
+        const RhoFieldType& rho,
+        surfaceScalarField& phi
+    ) const;
+
     //- No copy construct
     MRFZoneDF(const MRFZoneDF&) = delete;
 
@@ -199,6 +207,19 @@ public:
     void makeRelative(
         const surfaceScalarField& rho,
         surfaceScalarField& phi) const;
+
+    //- Make the given relative velocity absolute within the MRF region
+    void makeAbsolute(volVectorField& U) const;
+
+    //- Make the given relative flux absolute within the MRF region
+    void makeAbsolute(surfaceScalarField& phi) const;
+
+    //- Make the given relative mass-flux absolute within the MRF region
+    void makeAbsolute
+    (
+        const surfaceScalarField& rho,
+        surfaceScalarField& phi
+    ) const;
 
     //- Correct the boundary velocity for the rotation of the MRF region
     void correctBoundaryVelocity(volVectorField& U) const;

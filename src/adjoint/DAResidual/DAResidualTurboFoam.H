@@ -50,9 +50,6 @@ protected:
     /// thermophysical property
     fluidThermo& thermo_;
 
-    /// relative velocity
-    volVectorField& URel_;
-
     /// \name These are intermediate variables
     //@{
     volScalarField& he_;

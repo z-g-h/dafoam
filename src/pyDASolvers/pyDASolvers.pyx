@@ -56,6 +56,7 @@ cdef extern from "DASolvers.H" namespace "Foam":
         int getOutputDistributed(char *, char *)
         void setSolverInput(char *, char *, int, double *, double *)
         void calcdRdWT(int, PetscMat)
+        void calcdRdWTAD(PetscMat)
         void initializedRdWTMatrixFree()
         void destroydRdWTMatrixFree()
         void createMLRKSPMatrixFree(PetscMat, PetscKSP)
@@ -221,6 +222,9 @@ cdef class pyDASolvers:
     
     def calcdRdWT(self, isPC, Mat dRdWT):
         self._thisptr.calcdRdWT(isPC, dRdWT.mat)
+
+    def calcdRdWTAD(self, Mat dRdWT):
+        self._thisptr.calcdRdWTAD(dRdWT.mat)
     
     def calcdRdWOldTPsiAD(self, 
         oldTimeLevel, 

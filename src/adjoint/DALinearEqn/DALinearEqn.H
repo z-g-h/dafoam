@@ -14,10 +14,12 @@
 #include "fvOptions.H"
 #include "surfaceFields.H"
 #include "DAOption.H"
+#include "DAIndex.H"
 #include "DAUtility.H"
 #include "DAStateInfo.H"
 #include "DAModel.H"
 #include "DAIndex.H"
+#include "runTimeSelectionTables.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -45,11 +47,35 @@ protected:
     /// Foam::DAOption object
     const DAOption& daOption_;
 
+    /// Foam::DAIndex;
+    const DAIndex& daIndex_;
+
 public:
+    TypeName("DALinearEqn");
+    // Declare run-time constructor selection table
+    declareRunTimeSelectionTable(
+        autoPtr,
+        DALinearEqn,
+        dictionary,
+        (
+            const fvMesh& mesh,
+            const DAOption& daOption,
+            const DAIndex& daIndex),
+        (
+            mesh,
+            daOption,
+            daIndex));
+
+    static autoPtr<DALinearEqn> New(
+        const fvMesh& mesh,
+        const DAOption& daOption,
+        const DAIndex& daIndex);
+
     /// Constructors
     DALinearEqn(
         const fvMesh& mesh,
-        const DAOption& daOption);
+        const DAOption& daOption,
+        const DAIndex& daIndex);
 
     /// Destructor
     virtual ~DALinearEqn()
@@ -59,10 +85,10 @@ public:
     // Members
 
     /// create a multi-level, Richardson KSP object
-    void createMLRKSP(
+    virtual void createMLRKSP(
         const Mat jacMat,
         const Mat jacPCMat,
-        KSP ksp);
+        KSP ksp) = 0;
 
     /// solve the linear equation given a ksp and right-hand-side vector
     label solveLinearEqn(

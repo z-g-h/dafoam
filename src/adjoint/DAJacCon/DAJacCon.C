@@ -140,7 +140,15 @@ void DAJacCon::setupJacobianConnections(
         {
             PetscInt idxJ = cols.first;
             PetscScalar val = cols.second;
-            MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
+            /// if PCMode is reverse, we need to coloring dRdWT to get the row coloring.
+            if (daOption_.getOption<word>("PCMode") == "reverse" && daOption_.getSubDictOption<word>("useAD", "mode") == "reverse")
+            {
+                MatSetValues(conMat, 1, &idxJ, 1, &idxI, &val, INSERT_VALUES);
+            }
+            else
+            {
+                MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
+            }
         }
     }
     return;
@@ -247,10 +255,23 @@ void DAJacCon::initializeJacCon(const dictionary& options)
         PETSC_DETERMINE);
     MatSetFromOptions(jacCon_);
 
-    this->preallocateJacobianMatrix(
-        jacCon_,
-        dRdWPreallocOn_,
-        dRdWPreallocOff_);
+    // if PCMode use AD and AD mode is reverse,
+    // we need to coloring the dRdWT to get the row coloring.
+    if (daOption_.getOption<word>("PCMode") == "reverse" && daOption_.getSubDictOption<word>("useAD", "mode") == "reverse" )
+    {
+        this->preallocateJacobianMatrix(
+            jacCon_,
+            dRdWTPreallocOn_,
+            dRdWTPreallocOff_);
+    }
+    else
+    {
+        this->preallocateJacobianMatrix(
+            jacCon_,
+            dRdWPreallocOn_,
+            dRdWPreallocOff_);
+    }
+
     //MatSetOption(jacCon_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(jacCon_);
 

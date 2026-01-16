@@ -7,10 +7,8 @@ if (!simple.transonic())
     rho.relax();
 }
 
-volScalarField p0(p);
-
 volScalarField AU(UEqn.A());
-volScalarField AtU(AU - UEqn.H1());
+volScalarField AtU(AU);
 volVectorField HbyA("HbyA", U);
 HbyA = UEqn.H() / AU;
 
@@ -24,7 +22,7 @@ if (simple.transonic())
 
     surfaceScalarField phid(
         "phid",
-        fvc::interpolate(psi) * (fvc::interpolate(HbyA) & mesh.Sf()));
+        fvc::interpolate(psi) * fvc::flux(HbyA));
 
     MRF.makeRelative(fvc::interpolate(psi), phid);
 
@@ -57,12 +55,18 @@ else
 {
     surfaceScalarField phiHbyA(
         "phiHbyA",
-        fvc::interpolate(rho * HbyA) & mesh.Sf());
+        fvc::interpolate(rho) * fvc::flux(HbyA));
 
     MRF.makeRelative(fvc::interpolate(rho), phiHbyA);
 
     closedVolume = adjustPhi(phiHbyA, U, p);
-    phiHbyA += fvc::interpolate(rho / AtU - rho / AU) * fvc::snGrad(p) * mesh.magSf();
+
+    if (simple.consistent())
+    {
+        AtU -= UEqn.H1();
+        phiHbyA += fvc::interpolate(rho / AtU - rho / AU) * fvc::snGrad(p) * mesh.magSf();
+        HbyA -= (1.0 / AU - 1.0 / AtU) * fvc::grad(p);
+    }
 
     while (simple.correctNonOrthogonal())
     {
@@ -98,7 +102,7 @@ p.relax();
 // bound p
 DAUtility::boundVar(allOptions, p, printToScreen_);
 
-U = HbyA - (fvc::grad(p0) * (1.0 / AU - 1.0 / AtU) + fvc::grad(p) / AtU);
+U = HbyA - fvc::grad(p) / AtU;
 
 // bound U
 DAUtility::boundVar(allOptions, U, printToScreen_);

@@ -358,6 +358,8 @@ class DAOPTION(object):
         ## Which options to use to improve the adjoint equation convergence of transonic conditions
         ## This is used only for transonic solvers such as DARhoSimpleCFoam
         self.transonicPCOption = -1
+        self.subsonicPCOption = -1
+        self.turbulencePCOption = -1
 
         ## Options for unsteady adjoint. mode can be hybrid or timeAccurate
         ## Here nTimeInstances is the number of time instances and periodicity is the
@@ -482,6 +484,11 @@ class DAOPTION(object):
         ## Whether to frozen the turbulence model. frozen the turbulence model may improve the convergence of the adjoint, 
         ## but will decrease the accuracy of the gradient.
         self.frozenTurbulence = False
+        
+        ## PC type
+        self.DAPC = "ASM"
+
+        self.PCMode = "fd"
 
         ## The Petsc options for solving the adjoint linear equation. These options should work for
         ## most of the case. If the adjoint does not converge, try to increase pcFillLevel to 2, or

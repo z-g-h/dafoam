@@ -30,8 +30,6 @@ DAResidualTurboFoam::DAResidualTurboFoam(
       setResidualClassMemberPhi(phi),
       thermo_(const_cast<fluidThermo&>(
           mesh_.thisDb().lookupObject<fluidThermo>("thermophysicalProperties"))),
-      URel_(const_cast<volVectorField&>(
-          mesh_.thisDb().lookupObject<volVectorField>("URel"))),
       he_(thermo_.he()),
       rho_(const_cast<volScalarField&>(
           mesh_.thisDb().lookupObject<volScalarField>("rho"))),
@@ -133,15 +131,13 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
     volSymmTensorField Teff = -daTurb_.devRhoReff();
     volScalarField alphaEff("alphaEff", thermo_.alphaEff(alphat_));
 
-    URel_ == U_;
-    MRF_.makeRelative(URel_);
-
     fvScalarMatrix EEqn(
         fvm::div(phi_, he_, divHEScheme)
         + (he_.name() == "e"
                ? fvc::div(phi_, volScalarField("Ekp", 0.5 * magSqr(U_) + p_ / rho_))
-               : fvc::div(phi_, volScalarField("K", 0.5 * magSqr(U_))) - fvc::div(Teff.T() & U_) + fvc::div(p_ * (U_ - URel_)))
-        - fvm::Sp(fvc::div(phi_), he_)
+               : fvc::div(phi_, volScalarField("K", 0.5 * magSqr(U_))))
+        + fvc::div(MRF_.phi(), p_)
+        - fvc::div(Teff.T() & U_)
         - fvm::laplacian(alphaEff, he_));
 
     EEqn.relax();
@@ -152,7 +148,7 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
     // ******** p and phi Residuals **********
     // copied and modified from pEqn.H
     volScalarField AU(UEqn.A());
-    volScalarField AtU(AU - UEqn.H1());
+    volScalarField AtU(AU);
     volVectorField HbyA("HbyA", U_);
     HbyA = UEqn.H() / AU;
 
@@ -163,7 +159,7 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
     {
         surfaceScalarField phid(
             "phid",
-            fvc::interpolate(psi_) * (fvc::interpolate(HbyA) & mesh_.Sf()));
+            fvc::interpolate(psi_) * fvc::flux(HbyA));
 
         MRF_.makeRelative(fvc::interpolate(psi_), phid);
 
@@ -191,7 +187,7 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
         {
             // transonic PC option 2, we ignore all the off-diagonal
             // terms for the phiRes
-            phiRes_ = phi_;
+            phiRes_ = -phi_;
         }
         else
         {
@@ -206,12 +202,16 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
 
         surfaceScalarField phiHbyA(
             "phiHbyA",
-            fvc::interpolate(rho_ * HbyA) & mesh_.Sf());
+            fvc::interpolate(rho_) * fvc::flux(HbyA));
 
         MRF_.makeRelative(fvc::interpolate(rho_), phiHbyA);
 
         adjustPhi(phiHbyA, U_, p_);
-        phiHbyA += fvc::interpolate(rho_ / AtU - rho_ / AU) * fvc::snGrad(p_) * mesh_.magSf();
+        if (simple_.consistent())
+        {
+            AtU -= UEqn.H1();
+            phiHbyA += fvc::interpolate(rho_ / AtU - rho_ / AU) * fvc::snGrad(p_) * mesh_.magSf();
+        }
 
         fvScalarMatrix pEqn(
             fvc::div(phiHbyA)
@@ -225,7 +225,16 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
         // ******** phi Residuals **********
         // copied and modified from pEqn.H
         // TODO: the phiRes is not zero, need to fix
-        phiRes_ == phiHbyA + pEqn.flux() - phi_;
+        if (isPC && daOption_.getOption<label>("subsonicPCOption") == 2)
+        {
+            // ignore all the off-diagonal element to avoid poor convergence caused by small pivot
+            phiRes_ = -phi_;
+        }
+        else
+        {
+            phiRes_ == phiHbyA + pEqn.flux() - phi_;
+        }
+
         normalizePhiResiduals(phiRes);
     }
 }

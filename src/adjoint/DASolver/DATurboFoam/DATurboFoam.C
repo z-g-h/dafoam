@@ -25,7 +25,6 @@ DATurboFoam::DATurboFoam(
       pPtr_(nullptr),
       rhoPtr_(nullptr),
       UPtr_(nullptr),
-      URelPtr_(nullptr),
       phiPtr_(nullptr),
       pressureControlPtr_(nullptr),
       turbulencePtr_(nullptr),
