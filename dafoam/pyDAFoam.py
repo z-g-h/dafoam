@@ -482,7 +482,9 @@ class DAOPTION(object):
         self.adjFieldCouplingColoring = False
 
         ## Whether to frozen the turbulence model. frozen the turbulence model may improve the convergence of the adjoint, 
-        ## but will decrease the accuracy of the gradient.
+        ## but will decrease the accuracy of the gradient. 
+        ## this options is only support DATurboFoam
+        ## TODO: support all solver.
         self.frozenTurbulence = False
 
         ## PC type: this options could be "ASM", "FSModel".
