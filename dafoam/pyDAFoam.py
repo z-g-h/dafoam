@@ -359,7 +359,6 @@ class DAOPTION(object):
         ## This is used only for transonic solvers such as DARhoSimpleCFoam
         self.transonicPCOption = -1
         self.subsonicPCOption = -1
-        self.turbulencePCOption = -1
 
         ## Options for unsteady adjoint. mode can be hybrid or timeAccurate
         ## Here nTimeInstances is the number of time instances and periodicity is the
