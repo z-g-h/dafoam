@@ -213,7 +213,7 @@ void DAOutputThermalCoupling::run(scalarList& output)
     {
         // for solid solvers Q = k * dT/dz, so kappa = k
 
-        const volScalarField& k = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("k"));
+        const volScalarField& kappa = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("kappa"));
 
         forAll(patches_, idxI)
         {
@@ -236,7 +236,7 @@ void DAOutputThermalCoupling::run(scalarList& output)
                     deltaCoeffs = 1 / d;
                 }
                 // NOTE: we continue to use the counterI from the first loop
-                output[counterI] = k.boundaryField()[patchI][faceI] * deltaCoeffs;
+                output[counterI] = kappa.boundaryField()[patchI][faceI] * deltaCoeffs;
                 counterI++;
             }
         }

@@ -166,7 +166,7 @@ void Foam::wallHeatFluxTransferFvPatchScalarField::updateCoeffs()
     const scalarField& Tp(*this);
 
     /// not sure how to deal this, directly get kappa from filed K? or recalculate kappa from T? 
-    const volScalarField& kappa = db().lookupObject<volScalarField>("k");
+    const volScalarField& kappa = db().lookupObject<volScalarField>("kappa");
     const fvPatchField<scalar>& kappaBF = kappa.boundaryField()[patch().index()];
 
 

@@ -55,11 +55,9 @@ scalar DAFunctionTemperatureKS::calcFunction()
         tmpField = mag(fvc::grad(T)) * dimensionedScalar("unitLength", dimLength, 1.0);
     }
 
-    #if defined(CODI_ADF) || defined(CODI_ADR)
-        scalar maxValue = gMax(tmpField).getValue();
-    #else
-        scalar maxValue = gMax(tmpField);
-    #endif
+    scalar tmpMaxValue = gMax(tmpField);
+    scalar maxValue;
+    assignValueCheckAD(maxValue, tmpMaxValue);
 
     scalar objValTmp = 0.0;
     forAll(cellSources_, idxI)

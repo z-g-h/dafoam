@@ -254,7 +254,7 @@ void Foam::aeroThermalCoupleFvPatchScalarField::updateCoeffs()
     }
     else if (discipline_ == "thermal")
     {
-        const volScalarField& kappa = db().lookupObject<volScalarField>("k");
+        const volScalarField& kappa = db().lookupObject<volScalarField>("kappa");
         const fvPatchField<scalar>& kappaBF = kappa.boundaryField()[patch().index()];
 
         forAll(this->refValue(), faceI)
