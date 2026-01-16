@@ -26,14 +26,14 @@ DAOutputThermalCoupling::DAOutputThermalCoupling(
     DAResidual& daResidual,
     UPtrList<DAFunction>& daFunctionList)
     : DAOutput(
-        outputName,
-        outputType,
-        mesh,
-        daOption,
-        daModel,
-        daIndex,
-        daResidual,
-        daFunctionList)
+          outputName,
+          outputType,
+          mesh,
+          daOption,
+          daModel,
+          daIndex,
+          daResidual,
+          daFunctionList)
 {
     daOption_.getAllOptions().subDict("outputInfo").subDict(outputName_).readEntry("patches", patches_);
     // NOTE: always sort the patch because the order of the patch element matters in CHT coupling
@@ -212,15 +212,8 @@ void DAOutputThermalCoupling::run(scalarList& output)
     else if (discipline_ == "thermal")
     {
         // for solid solvers Q = k * dT/dz, so kappa = k
-        IOdictionary solidProperties(
-            IOobject(
-                "solidProperties",
-                mesh_.time().constant(),
-                mesh_,
-                IOobject::MUST_READ,
-                IOobject::NO_WRITE,
-                false));
-        scalar k = readScalar(solidProperties.lookup("k"));
+
+        const volScalarField& k = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("k"));
 
         forAll(patches_, idxI)
         {
@@ -243,7 +236,7 @@ void DAOutputThermalCoupling::run(scalarList& output)
                     deltaCoeffs = 1 / d;
                 }
                 // NOTE: we continue to use the counterI from the first loop
-                output[counterI] = k * deltaCoeffs;
+                output[counterI] = k.boundaryField()[patchI][faceI] * deltaCoeffs;
                 counterI++;
             }
         }
