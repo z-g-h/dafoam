@@ -484,10 +484,13 @@ class DAOPTION(object):
         ## Whether to frozen the turbulence model. frozen the turbulence model may improve the convergence of the adjoint, 
         ## but will decrease the accuracy of the gradient.
         self.frozenTurbulence = False
-        
-        ## PC type
+
+        ## PC type: this options could be "ASM", "FSModel".
+        ## when use a small yplus, switch this to "FSModel" could improve adjoint convegence performance. 
         self.DAPC = "ASM"
 
+        ## PCMode: "reverse" - AD method to calculate PC jac; "fd" - finite difference method
+        # usually the "fd" is the best option.
         self.PCMode = "fd"
 
         ## The Petsc options for solving the adjoint linear equation. These options should work for

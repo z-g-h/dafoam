@@ -785,7 +785,7 @@ void DASolver::calcdRdWT(
 {
     /*
     Description:
-        This function computes partials derivatives dRdWT or dRdWTPC.
+        This function computes partials derivatives dRdWT or dRdWTPC by finite-differnece method.
         PC means preconditioner matrix
     
     Input:
@@ -924,6 +924,16 @@ void DASolver::calcdRdWT(
 
 void DASolver::calcdRdWTAD(Mat dRdWT)
 {
+    /*
+    Description:
+        This function computes partials derivatives dRdWTPC by AD method.
+        PC means preconditioner matrix
+    
+    Output:
+        dRdWT: the partial derivative matrix [dR/dW]^T
+        NOTE: You need to call MatCreate for the dRdWT matrix before calling this function.
+        No need to call MatSetSize etc because they will be done in this function
+    */
 #ifdef CODI_ADR
     // initialize DAJacCon object
     word modelType = "dRdW";
@@ -981,7 +991,7 @@ void DASolver::calcdRdWTAD(Mat dRdWT)
     const PetscScalar* colorArray;
     VecGetArrayRead(jacConColors, &colorArray);
 
-    /// define row number. because of the coloring the dRdWT.
+    /// define row number. because of coloring is a row coloring.
     Vec coloredRow;
     VecCreate(PETSC_COMM_WORLD, &coloredRow);
     VecSetSizes(coloredRow, localSize, PETSC_DECIDE);
@@ -991,7 +1001,8 @@ void DASolver::calcdRdWTAD(Mat dRdWT)
     scalar jacLowerBoundValue = daOptionPtr_->getSubDictOption<scalar>("jacLowerBounds", "dRdWPC");
     PetscScalar jacLowerBound;
     assignValueCheckAD(jacLowerBound, jacLowerBoundValue);
-
+    
+    // modified from function "dRdWTMatVecMultFunction" to get jacobian
     this->initializeGlobalADTape4dRdWT();
 
     for (label color = 0; color < nColors; color++)

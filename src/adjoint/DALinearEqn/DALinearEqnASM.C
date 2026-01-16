@@ -136,7 +136,6 @@ void DALinearEqnASM::createMLRKSP(
     // and if localPreConIts=1 then subKSP is set to preOnly.
 
     // First, KSPSetFromOptions MUST be called
-    PetscOptionsSetValue(NULL, "-ksp_view_eigenvalues", NULL);
     KSPSetFromOptions(ksp);
 
     // Set GMRES
@@ -220,7 +219,7 @@ void DALinearEqnASM::createMLRKSP(
     //label KSPCalcEigen = readLabel(options.lookup("KSPCalcEigen"));
     //if (KSPCalcEigen)
     //{
-    KSPSetComputeEigenvalues(ksp, PETSC_TRUE);
+    // KSPSetComputeEigenvalues(ksp, PETSC_TRUE);
     //}
 
     //Setup the main ksp context before extracting the subdomains
