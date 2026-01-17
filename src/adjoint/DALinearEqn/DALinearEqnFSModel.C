@@ -125,6 +125,10 @@ void DALinearEqnFSModel::createMLRKSP(
     //
 
     // First, KSPSetFromOptions MUST be called
+    if (daOption_.getOption<label>("debug"))
+    {
+        PetscOptionsSetValue(NULL, "-ksp_view_eigenvalues", NULL);
+    }
     KSPSetFromOptions(ksp);
 
     // Set GMRES
@@ -203,11 +207,10 @@ void DALinearEqnFSModel::createMLRKSP(
 
     PCFieldSplitSetType(MLRGlobalPC, PC_COMPOSITE_MULTIPLICATIVE);
 
-    //label KSPCalcEigen = readLabel(options.lookup("KSPCalcEigen"));
-    //if (KSPCalcEigen)
-    //{
-    // KSPSetComputeEigenvalues(ksp, PETSC_TRUE);
-    //}
+    if (daOption_.getOption<label>("debug"))
+    {
+        KSPSetComputeEigenvalues(ksp, PETSC_TRUE);
+    }
 
     //Setup the main ksp context before extracting the subdomains
     KSPSetUp(ksp);
