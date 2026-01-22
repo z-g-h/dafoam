@@ -50,7 +50,7 @@ protected:
     /// registered states 1st hash: solverName, 2nd hash: fieldType, 3nd list, stateNames
     HashTable<wordList> stateInfo_;
 
-    /// restore model state 
+    /// restore model state
     wordList modelState_;
 
     /// table to specify how the states are connected to the residuals for a given solver
@@ -105,7 +105,7 @@ public:
     {
         return stateResConInfo_;
     }
-    
+
     /// clear model state from stateInfo for frozenTurbulence mode.
     /// restore model state in modelState_.
     void clearModelStateInfo()

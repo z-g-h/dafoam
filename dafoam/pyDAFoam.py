@@ -480,12 +480,12 @@ class DAOPTION(object):
         ## such as mixingPlane, cyclicAMI. This options will cause a large time to compute the coloring.
         self.adjFieldCouplingColoring = False
 
-        ## Whether to frozen the turbulence model. frozen the turbulence model may improve the convergence of the adjoint, 
-        ## but will decrease the accuracy of the gradient. 
+        ## Whether to frozen the turbulence model. frozen the turbulence model may improve the convergence of the adjoint,
+        ## but will decrease the accuracy of the gradient.
         self.frozenTurbulence = False
 
         ## PC type: this options could be "ASM", "FSModel".
-        ## when use a small yplus, switch this to "FSModel" could improve adjoint convegence performance. 
+        ## when use a small yplus, switch this to "FSModel" could improve adjoint convegence performance.
         self.DAPC = "ASM"
 
         ## PCMode: "reverse" - AD method to calculate PC jac; "fd" - finite difference method
@@ -513,10 +513,7 @@ class DAOPTION(object):
             "fpRelTol": 1e-6,
             "fpMinResTolDiff": 1.0e2,
             "fpPCUpwind": False,
-            "dynAdjustTol": False,
-            "dropTol" : 1e-10,
-            "dropTcol" : 0.01,
-            "dropMaxRowCount" : 1000,
+            "dynAdjustTol": False
         }
 
         ## Normalization for residuals. We should normalize all residuals!
@@ -567,7 +564,7 @@ class DAOPTION(object):
         self.decomposeParDict = {
             "method": "scotch",
             "simpleCoeffs": {"n": [2, 2, 1], "delta": 0.001},
-            "kahipCoeffs" : {"config": "strong", "imbalance" : 0.01},
+            "kahipCoeffs": {"config": "strong", "imbalance": 0.01},
             "preservePatches": ["None"],
             "singleProcessorFaceSets": ["None"],
             "args": ["None"],
@@ -2038,17 +2035,17 @@ class PYDAFOAM(object):
         self.solver.getOFFields(states)
 
         return states
-    
+
     def getModelStates(self):
-        '''
+        """
         return model state array owns by this processor.
-        This function is used in frozenTurbulence mode. 
+        This function is used in frozenTurbulence mode.
         we need manuuly update model state.
-        '''
+        """
 
         nLocalCellSize = self.solver.getNLocalCells()
         nModelStateSize = self.solver.getModelStateSize()
-        nLocalModelStates = nModelStateSize*nLocalCellSize
+        nLocalModelStates = nModelStateSize * nLocalCellSize
         modelStates = np.zeros(nLocalModelStates, self.dtype)
         self.solver.getOFModelFields(modelStates)
 
@@ -2063,7 +2060,7 @@ class PYDAFOAM(object):
         self.solverAD.updateOFFields(states)
 
         return
-    
+
     def setModelStates(self, states):
         """
         Set the model state to the OpenFOAM field.

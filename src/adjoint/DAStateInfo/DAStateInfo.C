@@ -77,7 +77,7 @@ autoPtr<DAStateInfo> DAStateInfo::New(
     // child class found
     autoPtr<DAStateInfo> daStateInfoPtr = autoPtr<DAStateInfo>(
         cstrIter()(modelType, mesh, daOption, daModel));
-    
+
     if (daOption.getOption<label>("frozenTurbulence"))
     {
         daStateInfoPtr->clearModelStateResConInfo();

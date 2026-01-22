@@ -82,7 +82,7 @@ DAFunctionWallHeatFlux::DAFunctionWallHeatFlux(
     }
     else
     {
-        
+
         // it is solid model
         IOdictionary solidProperties(
             IOobject(
@@ -233,7 +233,6 @@ scalar DAFunctionWallHeatFlux::calcFunction()
         const volScalarField::Boundary& TBf = T.boundaryField();
         const volScalarField kappa = db.lookupObject<volScalarField>("kappa");
         volScalarField::Boundary kappaBf = kappa.boundaryField();
-
 
         forAll(wallHeatFluxBf, patchI)
         {

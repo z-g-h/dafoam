@@ -46,7 +46,6 @@ class DAFunctionEntropyGeneration
 {
 
 protected:
-
     /// names of outlet patches
     wordList outletPatches_;
 
@@ -60,11 +59,11 @@ protected:
 
     scalar gamma_;
 
-    /// reference 
+    /// reference
     scalar PRef_;
     scalar TRef_;
 
-    /// total 
+    /// total
 
 public:
     TypeName("entropyGeneration");
@@ -85,7 +84,6 @@ public:
 
     /// calculate the value of objective function
     virtual scalar calcFunction();
-
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -150,7 +150,7 @@ public:
     {
         DASolverPtr_->calcdRdWT(isPC, dRdWT);
     }
-    
+
     /// compute dRdWT use AD
     void calcdRdWTAD(Mat dRdWT)
     {
@@ -229,7 +229,7 @@ public:
 #else
         label nLocalCells = this->getNLocalCells();
         label modelStateSize = this->getModelStateSize();
-        label nLocalModelStates = nLocalCells*modelStateSize;
+        label nLocalModelStates = nLocalCells * modelStateSize;
         scalar* statesArray = new scalar[nLocalModelStates];
         for (label i = 0; i < nLocalModelStates; i++)
         {
@@ -272,7 +272,7 @@ public:
 #else
         label nLocalCells = this->getNLocalCells();
         label modelStateSize = this->getModelStateSize();
-        label nLocalModelStates = nLocalCells*modelStateSize;
+        label nLocalModelStates = nLocalCells * modelStateSize;
         scalar* statesArray = new scalar[nLocalModelStates];
         DASolverPtr_->getOFModelFields(statesArray);
         for (label i = 0; i < nLocalModelStates; i++)

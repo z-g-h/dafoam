@@ -115,7 +115,7 @@ void DALinearEqnFSModel::createMLRKSP(
     //      --> master_PC_KSP --> KSP type set to Richardson with 'globalPreConIts'
     //          |
     //           --> globalPC --> PC type set to 'globalPCType'
-    //                  |         Use fieldSplit to split flow variables and model variable.            
+    //                  |         Use fieldSplit to split flow variables and model variable.
     //                  |
     //                   --> subPC -->  Usually Additive Schwartz and overlap is set
     //                         |         with 'ASMOverlap'. Use 0 to get BlockJacobi.
@@ -180,7 +180,7 @@ void DALinearEqnFSModel::createMLRKSP(
             modelState.append(stateName);
         }
     }
-    
+
     // exact model state IS
     IS is_flow, is_model;
     label nLocalCells = daIndex_.nLocalCells;

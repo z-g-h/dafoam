@@ -38,7 +38,7 @@ DAFunctionEntropyGeneration::DAFunctionEntropyGeneration(
 
         // read reference temperature and pressure
         functionDict_.readEntry<scalar>("referencePressure", PRef_);
-        functionDict_.readEntry<scalar>("referenceTemperature", TRef_);   
+        functionDict_.readEntry<scalar>("referenceTemperature", TRef_);
     }
     // read entropy transfers options
     if (functionDict_.found("heatExchangePatches"))
@@ -89,16 +89,16 @@ scalar DAFunctionEntropyGeneration::calcFunction()
     scalar functionValue = 0.0;
 
     DATurbulenceModel& daTurbModel =
-             const_cast<DATurbulenceModel&>(daModel_.getDATurbulenceModel());
+        const_cast<DATurbulenceModel&>(daModel_.getDATurbulenceModel());
 
     const volScalarField& p = db.lookupObject<volScalarField>("p");
     const volScalarField& T = db.lookupObject<volScalarField>("T");
     fluidThermo& thermo = const_cast<fluidThermo&>(
-                    mesh_.thisDb().lookupObject<fluidThermo>("thermophysicalProperties"));
+        mesh_.thisDb().lookupObject<fluidThermo>("thermophysicalProperties"));
     volScalarField& he = thermo.he();
     volScalarField alphaEff = daTurbModel.alphaEff();
     const volScalarField::Boundary& alphaEffBf = alphaEff.boundaryField();
-  
+
     const scalar R = Cp_ - Cp_ / gamma_;
     const scalar expCoeff = gamma_ / (gamma_ - 1.0);
 
@@ -128,20 +128,20 @@ scalar DAFunctionEntropyGeneration::calcFunction()
             vector US = UBf[patchI][faceI];
             vector Sf = mesh_.Sf().boundaryField()[patchI][faceI];
             scalar rhoS = rhoBf[patchI][faceI];
-            scalar mfr = rhoS * (US & Sf);  
+            scalar mfr = rhoS * (US & Sf);
 
-            // calculate specific entropy 
+            // calculate specific entropy
             scalar TS = TBf[patchI][faceI];
             scalar pS = pBf[patchI][faceI];
             scalar UMag = mag(UBf[patchI][faceI]);
             scalar Ma2 = sqr(UMag / sqrt(gamma_ * R * TS));
             scalar TT = TS * (1.0 + 0.5 * (gamma_ - 1.0) * Ma2);
-            scalar pT = pS * pow(1.0 + 0.5 * (gamma_ - 1.0) * Ma2, expCoeff);    
+            scalar pT = pS * pow(1.0 + 0.5 * (gamma_ - 1.0) * Ma2, expCoeff);
 
-            scalar specificEntropy = Cp_ * log(TT / TRef_) - R * log(pT / PRef_); 
+            scalar specificEntropy = Cp_ * log(TT / TRef_) - R * log(pT / PRef_);
 
             // calculate entropy by massflowRate * specificEntropy
-            scalar entropyFlow = mfr * specificEntropy;   
+            scalar entropyFlow = mfr * specificEntropy;
 
             // sum the entropy
             if (inletPatches_.found(patchName))
@@ -157,18 +157,17 @@ scalar DAFunctionEntropyGeneration::calcFunction()
         {
             scalar magSf = mesh_.magSf().boundaryField()[patchI][faceI];
             scalar TS = TBf[patchI][faceI];
-            scalar dHedz = heBf[patchI].snGrad()()[faceI]; 
+            scalar dHedz = heBf[patchI].snGrad()()[faceI];
 
             // calculate heat flux (heat flux = alphaEff* dHe/dz)
             scalar qWall = alphaEffBf[patchI][faceI] * dHedz;
-        
+
             // d S_transfers = (q_wall / TS) * dA
             scalar entropyTransfer = (qWall * magSf) / TS;
 
             // scalar entropyGen = qWall * area / Twall;
             totalEntropyTransfers += entropyTransfer;
         }
-
     }
 
     reduce(entropyFlowInlet, sumOp<scalar>());
@@ -190,7 +189,3 @@ scalar DAFunctionEntropyGeneration::calcFunction()
 } // End namespace Foam
 
 // ************************************************************************* //
-
-
-
-
