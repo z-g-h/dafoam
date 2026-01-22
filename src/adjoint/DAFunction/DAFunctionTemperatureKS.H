@@ -6,6 +6,16 @@
     Description:
         Child class for max von Mises stress
 
+    Options template:
+            "maxTKS" : {
+            "type"         : "temperatureKS",
+            "source"       : "allCells",
+            "coeffKS"      : 50,
+            "isGrad"       : False,
+            "normalMode"   : "auto"|"fixed"
+            "normalValue"  : 665, //if normalMode set to fixed
+            "scale"        : 1.0}
+            
 \*---------------------------------------------------------------------------*/
 
 #ifndef DAFunctionTemperatureKS_H
@@ -30,7 +40,9 @@ class DAFunctionTemperatureKS
 protected:
     /// coefficient for the KS function
     scalar coeffKS_;
-    bool   isGrad_;
+    bool isGrad_;
+    scalar normalValue_;
+    word normalMode_;
 
 public:
     TypeName("temperatureKS");

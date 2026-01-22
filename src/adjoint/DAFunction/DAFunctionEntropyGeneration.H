@@ -19,8 +19,7 @@
         entropyTransfers
         options        |    "heatExchangePatches": ["wall"],
 
-                        "scale": 1.0,
-                        "addToAdjoint": True},
+                        "scale": 1.0},
         
         if entropy generation only has entropyChanges, there is no need to set entropy transfers options.
     
