@@ -75,22 +75,51 @@ autoPtr<DAStateInfo> DAStateInfo::New(
     }
 
     // child class found
-    return autoPtr<DAStateInfo>(
+    autoPtr<DAStateInfo> daStateInfoPtr = autoPtr<DAStateInfo>(
         cstrIter()(modelType, mesh, daOption, daModel));
+    
+    if (daOption.getOption<label>("frozenTurbulence"))
+    {
+        daStateInfoPtr->clearModelStateResConInfo();
+        daStateInfoPtr->clearModelStateInfo();
+    }
+    return daStateInfoPtr;
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void DAStateInfo::removeNutResidualModelCon(List<List<word>>& stateCon)
+void DAStateInfo::clearModelStateResConInfo()
 {
+    forAll(stateInfo_["volVectorStates"], idxI)
+    {
+        word stateName = stateInfo_["volVectorStates"][idxI];
+        word resName = stateName + "Res";
+        this->removeConModelState(stateResConInfo_[resName]);
+    }
+    forAll(stateInfo_["volScalarStates"], idxI)
+    {
+        word stateName = stateInfo_["volScalarStates"][idxI];
+        word resName = stateName + "Res";
+        this->removeConModelState(stateResConInfo_[resName]);
+    }
+    forAll(stateInfo_["surfaceScalarStates"], idxI)
+    {
+        word stateName = stateInfo_["surfaceScalarStates"][idxI];
+        word resName = stateName + "Res";
+        this->removeConModelState(stateResConInfo_[resName]);
+    }
+}
 
+void DAStateInfo::removeConModelState(List<List<word>>& stateCon)
+{
     forAll(stateCon, idxI)
     {
         List<word> tmpStateCon;
         forAll(stateCon[idxI], idxJ)
         {
             word conStateName = stateCon[idxI][idxJ];
-            if (conStateName != "nut")
+            // only conStateName not be modelStates, we store it.
+            if (!(stateInfo_["modelStates"].found(conStateName) || modelState_.found(conStateName)))
             {
                 tmpStateCon.append(conStateName);
             }

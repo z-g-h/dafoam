@@ -39,15 +39,12 @@ DAStateInfoTurboFoam::DAStateInfoTurboFoam(
 
     stateInfo_["volScalarStates"].append("p");
     stateInfo_["volScalarStates"].append("T");
+    stateInfo_["modelStates"].append("nut");
     stateInfo_["volVectorStates"].append("U");
     stateInfo_["surfaceScalarStates"].append("phi");
 
-    if (!daOption_.getOption<bool>("frozenTurbulence"))
-    {
-        stateInfo_["modelStates"].append("nut");
-        // correct the names for model states based on the selected physical model at runtime
-        daModel.correctModelStates(stateInfo_["modelStates"]);
-    }
+    // correct the names for model states based on the selected physical model at runtime
+    daModel.correctModelStates(stateInfo_["modelStates"]);
 
     /* 
     Description:
@@ -112,24 +109,14 @@ DAStateInfoTurboFoam::DAStateInfoTurboFoam(
             {"U", "T"}, // lv2
         });
 
-    if (daOption_.getOption<bool>("frozenTurbulence"))
-    {
-        this->removeNutResidualModelCon(stateResConInfo_["URes"]);
-        this->removeNutResidualModelCon(stateResConInfo_["TRes"]);
-        this->removeNutResidualModelCon(stateResConInfo_["pRes"]);
-        this->removeNutResidualModelCon(stateResConInfo_["phiRes"]);
-    }
-    else
-    {
-        // need to correct connectivity for physical models for each residual
-        daModel.correctStateResidualModelCon(stateResConInfo_["URes"]);
-        daModel.correctStateResidualModelCon(stateResConInfo_["TRes"]);
-        daModel.correctStateResidualModelCon(stateResConInfo_["pRes"]);
-        daModel.correctStateResidualModelCon(stateResConInfo_["phiRes"]);
+    // need to correct connectivity for physical models for each residual
+    daModel.correctStateResidualModelCon(stateResConInfo_["URes"]);
+    daModel.correctStateResidualModelCon(stateResConInfo_["TRes"]);
+    daModel.correctStateResidualModelCon(stateResConInfo_["pRes"]);
+    daModel.correctStateResidualModelCon(stateResConInfo_["phiRes"]);
 
-        // add physical model residual connectivity
-        daModel.addModelResidualCon(stateResConInfo_);
-    }
+    // add physical model residual connectivity
+    daModel.addModelResidualCon(stateResConInfo_);
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

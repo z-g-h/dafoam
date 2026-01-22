@@ -59,6 +59,9 @@ protected:
     /// the StateInfo_ list from DAStateInfo object
     HashTable<wordList> stateInfo_;
 
+    /// the modelStates from the DAStateInfo
+    wordList modelStates_;
+
 public:
     /// Constructors
     DAField(
@@ -83,8 +86,16 @@ public:
     /// assign the fields in OpenFOAM based on the state array
     void state2OFField(const scalar* states) const;
 
+    /// assign the model state fields in OpenFOAM based on the state array
+    /// this function is only used in frozenTurbulence mode.
+    void state2OFModelField(const scalar* states) const;
+
     /// assign the openfoam fields to the states array
     void ofField2State(scalar* states) const;
+
+    /// assign the model state openfoam fields to the states array
+    /// this function is only used in frozenTurbulence mode.
+    void ofModelField2State(scalar* states) const;
 
     /// assign the points in fvMesh of OpenFOAM based on the point array
     void point2OFMesh(const scalar* volCoords) const;

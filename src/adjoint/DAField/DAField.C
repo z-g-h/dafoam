@@ -28,6 +28,7 @@ DAField::DAField(
     word solverName = daOption.getOption<word>("solverName");
     autoPtr<DAStateInfo> daStateInfo(DAStateInfo::New(solverName, mesh, daOption, daModel));
     stateInfo_ = daStateInfo->getStateInfo();
+    modelStates_ = daStateInfo->getModelStates();
 
     // check if we have special boundary conditions that need special treatment
     this->checkSpecialBCs();
@@ -210,6 +211,47 @@ void DAField::state2OFField(const scalar* states) const
     }
 }
 
+void DAField::state2OFModelField(const scalar* states) const
+{
+    /*
+    Description:
+        Assign model state values OpenFOAM field values based on the state variable array.
+        This function is only used in frozenTurbulence mode.
+
+    Input:
+    states: state variable array
+
+    Output:
+    OpenFoam field variables
+
+    Example:
+        Image we have two state variables (omega,k) and five cells, running on two CPU
+        processors, the proc0 owns two cells and the proc1 owns three cells,
+        then calling this function will assign the omega, and k based on the the state 
+        vector (state-by-state ordering):
+    
+        stateVec = [omega0, omega1, k0, k1 | omega0, omega1, omega2, k0, k1, k2] <- omega0 means omega for the 0th cell on local processor
+                        0      1     2  3  |  4         5       6     7   8   9  <- global state vec index
+                   -------- proc0 ---------|------------- proc1 --------------- 
+    */
+
+    const objectRegistry& db = mesh_.thisDb();
+
+    label cout = 0;
+
+    forAll(modelStates_, idxI)
+    {
+        // lookup state from meshDb
+        makeState(modelStates_[idxI], volScalarField, db);
+
+        forAll(mesh_.cells(), cellI)
+        {
+            state[cellI] = states[cout];
+            cout++;
+        }
+    }
+}
+
 void DAField::ofField2State(scalar* states) const
 {
     /*
@@ -293,6 +335,46 @@ void DAField::ofField2State(scalar* states) const
                 const label& faceIdx = daIndex_.bFaceFaceI[relIdx];
                 states[localIdx] = state.boundaryField()[patchIdx][faceIdx];
             }
+        }
+    }
+}
+
+void DAField::ofModelField2State(scalar* states) const
+{
+    /*
+    Description:
+        Assign model state values OpenFOAM field values to the state variable array
+
+    Input:
+    OpenFoam field variables
+
+    Output:
+    states: state variable array
+
+    Example:
+        Image we have two state variables (omega,k) and five cells, running on two CPU
+        processors, the proc0 owns two cells and the proc1 owns three cells,
+        then calling this function will assign the omega, and k based on the the state 
+        vector (state-by-state ordering):
+    
+        stateVec = [omega0, omega1, k0, k1 | omega0, omega1, omega2, k0, k1, k2] <- omega0 means omega for the 0th cell on local processor
+                       0      1     2   3  |  4        5       6     7   8   9  <- global state vec index
+                   --------- proc0 ------- |--------------- proc1 ------------- 
+    */
+
+    const objectRegistry& db = mesh_.thisDb();
+
+    label cout = 0;
+
+    forAll(modelStates_, idxI)
+    {
+        // lookup state from meshDb
+        makeState(modelStates_[idxI], volScalarField, db);
+
+        forAll(mesh_.cells(), cellI)
+        {
+            states[cout] = state[cellI];
+            cout++;
         }
     }
 }

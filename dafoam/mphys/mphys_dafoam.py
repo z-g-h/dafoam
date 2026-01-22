@@ -349,6 +349,11 @@ class DAFoamSolver(ImplicitComponent):
             else:
                 DASolver.solver.calcPrimalResidualStatistics("print")
 
+            # for frozenTurbulence mode, we need to manuuly update turbulence states before update flow states.
+            if DASolver.getOption("frozenTurbulence"):
+                modelStates = DASolver.getModelStates()
+                DASolver.setModelStates(modelStates)
+
             # assign the computed flow states to outputs
             states = DASolver.getStates()
             outputs[self.stateName] = states
@@ -448,7 +453,7 @@ class DAFoamSolver(ImplicitComponent):
             dFdW = DASolver.array2Vec(dFdWArray)
 
             # run coloring
-            if self.DASolver.getOption("adjUseColoring") and self.runColoring:
+            if self.runColoring:
                 self.DASolver.solver.runColoring()
                 self.runColoring = False
 

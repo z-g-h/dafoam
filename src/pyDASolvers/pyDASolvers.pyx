@@ -64,7 +64,9 @@ cdef extern from "DASolvers.H" namespace "Foam":
         int solveLinearEqn(PetscKSP, PetscVec, PetscVec)
         void calcdRdWOldTPsiAD(int, double *, double *)
         void updateOFFields(double *)
+        void updateOFModelFields(double *)
         void getOFFields(double *)
+        void getOFModelFields(double *)
         void getOFField(char *, char *, double *)
         void getOFMeshPoints(double *)
         void updateOFMesh(double *)
@@ -72,6 +74,7 @@ cdef extern from "DASolvers.H" namespace "Foam":
         int getNLocalAdjointStates()
         int getNLocalAdjointBoundaryStates()
         int getNLocalCells()
+        int getModelStateSize()
         int getNLocalPoints()
         int checkMesh()
         double getdFScaling(char *, int)
@@ -258,11 +261,23 @@ cdef class pyDASolvers:
         assert len(states) == self.getNLocalAdjointStates(), "invalid array size!"
         cdef double *states_data = <double*>states.data
         self._thisptr.updateOFFields(states_data)
+
+    def updateOFModelFields(self, np.ndarray[double, ndim=1, mode="c"] states):
+        cdef int nModelStates = self.getModelStateSize()*self.getNLocalCells()
+        assert len(states) == nModelStates, "invalid array size!"
+        cdef double *states_data = <double*>states.data
+        self._thisptr.updateOFModelFields(states_data)
     
     def getOFFields(self, np.ndarray[double, ndim=1, mode="c"] states):
         assert len(states) == self.getNLocalAdjointStates(), "invalid array size!"
         cdef double *states_data = <double*>states.data
         self._thisptr.getOFFields(states_data)
+
+    def getOFModelFields(self, np.ndarray[double, ndim=1, mode="c"] states):
+        cdef int nModelStates = self.getModelStateSize()*self.getNLocalCells()
+        assert len(states) == nModelStates, "invalid array size!"
+        cdef double *states_data = <double*>states.data
+        self._thisptr.getOFModelFields(states_data)
     
     def getOFMeshPoints(self, np.ndarray[double, ndim=1, mode="c"] points):
         assert len(points) == self.getNLocalPoints() * 3, "invalid array size!"
@@ -296,6 +311,9 @@ cdef class pyDASolvers:
     
     def getNLocalPoints(self):
         return self._thisptr.getNLocalPoints()
+    
+    def getModelStateSize(self):
+        return self._thisptr.getModelStateSize()
     
     def checkMesh(self):
         return self._thisptr.checkMesh()

@@ -935,6 +935,8 @@ void DASolver::calcdRdWTAD(Mat dRdWT)
         No need to call MatSetSize etc because they will be done in this function
     */
 #ifdef CODI_ADR
+    label isPC = 1;
+    label transposed = 1;
     // initialize DAJacCon object
     word modelType = "dRdW";
     DAJacCon daJacCon(
@@ -972,11 +974,11 @@ void DASolver::calcdRdWTAD(Mat dRdWT)
         PETSC_DETERMINE,
         PETSC_DETERMINE);
     MatSetFromOptions(dRdWT);
-    daJacCon.preallocatedRdW(dRdWT, 1);
+    daJacCon.preallocatedRdW(dRdWT, transposed);
     MatSetUp(dRdWT);
     MatZeroEntries(dRdWT);
     Info << "Partial derivative matrix created. " << meshPtr_->time().elapsedCpuTime() << " s" << endl;
-    Info << "Calculate partial derivative matrix using AD. " << endl; 
+    Info << "Calculate partial derivative matrix using AD. " << endl;
 
     // define AD for input and output \bar{x} = dRdWT * \bar{y}
     PetscScalar yBar[localSize], xBar[localSize];
@@ -1001,9 +1003,9 @@ void DASolver::calcdRdWTAD(Mat dRdWT)
     scalar jacLowerBoundValue = daOptionPtr_->getSubDictOption<scalar>("jacLowerBounds", "dRdWPC");
     PetscScalar jacLowerBound;
     assignValueCheckAD(jacLowerBound, jacLowerBoundValue);
-    
+
     // modified from function "dRdWTMatVecMultFunction" to get jacobian
-    this->initializeGlobalADTape4dRdWT();
+    this->initializeGlobalADTape4dRdWT(isPC);
 
     for (label color = 0; color < nColors; color++)
     {
@@ -1060,9 +1062,13 @@ void DASolver::calcdRdWTAD(Mat dRdWT)
     }
 
     VecRestoreArrayRead(jacConColors, &colorArray);
-    
+
     MatAssemblyBegin(dRdWT, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(dRdWT, MAT_FINAL_ASSEMBLY);
+
+    this->deactivateStateVariableInput4AD();
+    this->updateStateBoundaryConditions();
+    this->calcResiduals();
 
     wordList writeJacobians;
     daOptionPtr_->getAllOptions().readEntry<wordList>("writeJacobians", writeJacobians);
@@ -1214,6 +1220,15 @@ void DASolver::updateOFFields(const scalar* states)
     this->updateStateBoundaryConditions();
 }
 
+void DASolver::updateOFModelFields(const scalar* states)
+{
+    if (daOptionPtr_->getOption<label>("debug"))
+    {
+        Info << "Updating the Model State OpenFOAM field..." << endl;
+    }
+    daFieldPtr_->state2OFModelField(states);
+}
+
 void DASolver::updateOFMesh(const scalar* volCoords)
 {
     /*
@@ -1323,7 +1338,7 @@ PetscErrorCode DASolver::dRdWTMatVecMultFunction(Mat dRdWTMF, Vec vecX, Vec vecY
     return 0;
 }
 
-void DASolver::initializeGlobalADTape4dRdWT()
+void DASolver::initializeGlobalADTape4dRdWT(label isPC)
 {
 #ifdef CODI_ADR
     /*
@@ -1345,7 +1360,7 @@ void DASolver::initializeGlobalADTape4dRdWT()
     // need to correct BC and update all intermediate variables
     this->updateStateBoundaryConditions();
     // Now we can compute the residuals
-    this->calcResiduals();
+    this->calcResiduals(isPC);
     // Set the residual as the output
     this->registerResidualOutput4AD();
     // All done, set the tape to passive
@@ -2781,11 +2796,8 @@ void DASolver::updateStateBoundaryConditions()
     {
         daResidualPtr_->correctBoundaryConditions();
         daResidualPtr_->updateIntermediateVariables();
-        if (!daOptionPtr_->getOption<bool>("frozenTurbulence"))
-        {
-            daModelPtr_->correctBoundaryConditions();
-            daModelPtr_->updateIntermediateVariables();
-        }
+        daModelPtr_->correctBoundaryConditions();
+        daModelPtr_->updateIntermediateVariables();
     }
 
     // if we have regression models, we also need to update them because they will update the fields

@@ -482,8 +482,6 @@ class DAOPTION(object):
 
         ## Whether to frozen the turbulence model. frozen the turbulence model may improve the convergence of the adjoint, 
         ## but will decrease the accuracy of the gradient. 
-        ## this options is only support DATurboFoam
-        ## TODO: support all solver.
         self.frozenTurbulence = False
 
         ## PC type: this options could be "ASM", "FSModel".
@@ -2040,6 +2038,21 @@ class PYDAFOAM(object):
         self.solver.getOFFields(states)
 
         return states
+    
+    def getModelStates(self):
+        '''
+        return model state array owns by this processor.
+        This function is used in frozenTurbulence mode. 
+        we need manuuly update model state.
+        '''
+
+        nLocalCellSize = self.solver.getNLocalCells()
+        nModelStateSize = self.solver.getModelStateSize()
+        nLocalModelStates = nModelStateSize*nLocalCellSize
+        modelStates = np.zeros(nLocalModelStates, self.dtype)
+        self.solver.getOFModelFields(modelStates)
+
+        return modelStates
 
     def setStates(self, states):
         """
@@ -2048,6 +2061,17 @@ class PYDAFOAM(object):
 
         self.solver.updateOFFields(states)
         self.solverAD.updateOFFields(states)
+
+        return
+    
+    def setModelStates(self, states):
+        """
+        Set the model state to the OpenFOAM field.
+        This function is only used in frozenTurbulence mode.
+        """
+
+        self.solver.updateOFModelFields(states)
+        self.solverAD.updateOFModelFields(states)
 
         return
 

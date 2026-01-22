@@ -285,6 +285,10 @@ public:
     /// Update the OpenFOAM field values (including both internal and boundary fields) based on the state array
     void updateOFFields(const scalar* states);
 
+    /// Update the model state OpenFOAM field values (including both internal and boundary fields) based on the state array
+    /// this function is only used in frozenTurbulence mode.
+    void updateOFModelFields(const scalar* states);
+
     /// Update the OpenFoam mesh point coordinates based on the volume point coords array
     void updateOFMesh(const scalar* volCoords);
 
@@ -292,6 +296,13 @@ public:
     void getOFFields(scalar* states)
     {
         daFieldPtr_->ofField2State(states);
+    }
+
+    /// assign the model state variables from OpenFOAM layer to states array,
+    /// this function is only used in frozenTurbulence mode.
+    void getOFModelFields(scalar* states)
+    {
+        daFieldPtr_->ofModelField2State(states);
     }
 
     /// get a field variable from OF layer
@@ -406,7 +417,7 @@ public:
         double* product);
 
     /// initialize the CoDiPack reverse-mode AD global tape for computing dRdWT*psi
-    void initializeGlobalADTape4dRdWT();
+    void initializeGlobalADTape4dRdWT(label isPC = 0);
 
     /// whether the volCoord input is defined
     label hasVolCoordInput();
@@ -504,6 +515,12 @@ public:
     label getNLocalPoints() const
     {
         return meshPtr_->nPoints();
+    }
+
+    /// return model state size
+    label getModelStateSize()
+    {
+        return daStateInfoPtr_->getModelStateSize();
     }
 
     /// initialize DASolver::daFunctionPtrList_ one needs to call this before calling printAllFunctions

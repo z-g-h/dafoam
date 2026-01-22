@@ -220,6 +220,26 @@ public:
 #endif
     }
 
+    /// Update the model state OpenFOAM field values (including both internal and boundary fields) based on the states array
+    /// this function is only used in frozenTurbulence mode.
+    void updateOFModelFields(const double* states)
+    {
+#if !defined(CODI_ADR) && !defined(CODI_ADF)
+        DASolverPtr_->updateOFModelFields(states);
+#else
+        label nLocalCells = this->getNLocalCells();
+        label modelStateSize = this->getModelStateSize();
+        label nLocalModelStates = nLocalCells*modelStateSize;
+        scalar* statesArray = new scalar[nLocalModelStates];
+        for (label i = 0; i < nLocalModelStates; i++)
+        {
+            statesArray[i] = states[i];
+        }
+        DASolverPtr_->updateOFModelFields(statesArray);
+        delete[] statesArray;
+#endif
+    }
+
     /// get the flatten mesh points coordinates
     void getOFMeshPoints(double* points)
     {
@@ -236,6 +256,26 @@ public:
         scalar* statesArray = new scalar[localSize];
         DASolverPtr_->getOFFields(statesArray);
         for (label i = 0; i < localSize; i++)
+        {
+            states[i] = statesArray[i].value();
+        }
+        delete[] statesArray;
+#endif
+    }
+
+    /// Assign the model state OpenFOAM field values to the states array
+    /// this function is only used in frozenTurbulence mode.
+    void getOFModelFields(double* states)
+    {
+#if !defined(CODI_ADR) && !defined(CODI_ADF)
+        DASolverPtr_->getOFModelFields(states);
+#else
+        label nLocalCells = this->getNLocalCells();
+        label modelStateSize = this->getModelStateSize();
+        label nLocalModelStates = nLocalCells*modelStateSize;
+        scalar* statesArray = new scalar[nLocalModelStates];
+        DASolverPtr_->getOFModelFields(statesArray);
+        for (label i = 0; i < nLocalModelStates; i++)
         {
             states[i] = statesArray[i].value();
         }
@@ -305,6 +345,12 @@ public:
     label getNLocalCells() const
     {
         return DASolverPtr_->getNLocalCells();
+    }
+
+    /// return model state size
+    label getModelStateSize()
+    {
+        return DASolverPtr_->getModelStateSize();
     }
 
     /// return the value of objective based on timeOp

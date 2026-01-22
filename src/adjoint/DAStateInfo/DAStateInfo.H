@@ -50,6 +50,9 @@ protected:
     /// registered states 1st hash: solverName, 2nd hash: fieldType, 3nd list, stateNames
     HashTable<wordList> stateInfo_;
 
+    /// restore model state 
+    wordList modelState_;
+
     /// table to specify how the states are connected to the residuals for a given solver
     HashTable<List<List<word>>> stateResConInfo_;
 
@@ -103,8 +106,36 @@ public:
         return stateResConInfo_;
     }
     
-    /// remove model state from stateResConInfo_
-    void removeNutResidualModelCon(List<List<word>>& stateCon);
+    /// clear model state from stateInfo for frozenTurbulence mode.
+    /// restore model state in modelState_.
+    void clearModelStateInfo()
+    {
+        modelState_.swap(stateInfo_["modelStates"]);
+    }
+
+    /// clear model state from stateInfo for frozenTurbulence
+    /// this function should be called before clearModelStateInfo()
+    void clearModelStateResConInfo();
+    void removeConModelState(List<List<word>>& stateCon);
+
+    /// return model state size
+    label getModelStateSize()
+    {
+        return stateInfo_["modelStates"].size() + modelState_.size();
+    }
+
+    /// return the reference modelStates
+    const wordList& getModelStates() const
+    {
+        if (stateInfo_["modelStates"].size() != 0)
+        {
+            return stateInfo_["modelStates"];
+        }
+        else
+        {
+            return modelState_;
+        }
+    }
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
