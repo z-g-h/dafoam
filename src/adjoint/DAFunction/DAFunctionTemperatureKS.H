@@ -12,8 +12,6 @@
             "source"       : "allCells",
             "coeffKS"      : 50,
             "isGrad"       : False,
-            "normalMode"   : "auto"|"fixed"
-            "normalValue"  : 665, //if normalMode set to fixed
             "scale"        : 1.0}
             
 \*---------------------------------------------------------------------------*/
@@ -41,8 +39,6 @@ protected:
     /// coefficient for the KS function
     scalar coeffKS_;
     bool isGrad_;
-    scalar normalValue_;
-    word normalMode_;
 
 public:
     TypeName("temperatureKS");

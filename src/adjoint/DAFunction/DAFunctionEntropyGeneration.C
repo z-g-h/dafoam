@@ -97,7 +97,6 @@ scalar DAFunctionEntropyGeneration::calcFunction()
         mesh_.thisDb().lookupObject<fluidThermo>("thermophysicalProperties"));
     volScalarField& he = thermo.he();
     volScalarField alphaEff = daTurbModel.alphaEff();
-    const volScalarField::Boundary& alphaEffBf = alphaEff.boundaryField();
 
     const scalar R = Cp_ - Cp_ / gamma_;
     const scalar expCoeff = gamma_ / (gamma_ - 1.0);
@@ -176,7 +175,7 @@ scalar DAFunctionEntropyGeneration::calcFunction()
 
     // calculate entropy generation by entropy balance equation
     totalEntropyChanges = entropyFlowOutlet + entropyFlowInlet;
-    functionValue = totalEntropyChanges - totalEntropyTransfers;
+    functionValue = (totalEntropyChanges - totalEntropyTransfers) * scale_;
 
     // check if we need to calculate refDiff.
     this->calcRefVar(functionValue);
