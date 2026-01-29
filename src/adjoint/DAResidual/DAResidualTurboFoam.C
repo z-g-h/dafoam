@@ -139,7 +139,6 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
     HbyA = UEqn.H() / AU;
 
     volScalarField rAU(1.0 / UEqn.A());
-    tUEqn.clear();
 
     if (simple_.transonic())
     {
@@ -173,11 +172,11 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
         {
             // transonic PC option 2, we ignore all the off-diagonal
             // terms for the phiRes
-            phiRes_ = -phi_;
+            phiRes_ = phi_;
         }
         else
         {
-            phiRes_ == pEqn.flux() - phi_;
+            phiRes_ == phi_ - pEqn.flux();
         }
 
         // need to normalize phiRes
@@ -214,15 +213,17 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
         if (isPC && daOption_.getOption<label>("subsonicPCOption") == 2)
         {
             // ignore all the off-diagonal element to avoid poor convergence caused by small pivot
-            phiRes_ = -phi_;
+            phiRes_ = phi_;
         }
         else
         {
-            phiRes_ == phiHbyA + pEqn.flux() - phi_;
+            phiRes_ == phi_ - (phiHbyA + pEqn.flux());
         }
 
         normalizePhiResiduals(phiRes);
     }
+    
+    tUEqn.clear();
 }
 
 void DAResidualTurboFoam::updateIntermediateVariables()

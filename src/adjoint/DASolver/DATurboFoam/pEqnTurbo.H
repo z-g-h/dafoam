@@ -13,7 +13,6 @@ volVectorField HbyA("HbyA", U);
 HbyA = UEqn.H() / AU;
 
 volScalarField rAU(1.0 / UEqn.A());
-tUEqn.clear();
 
 bool closedVolume = false;
 
@@ -25,6 +24,9 @@ if (simple.transonic())
         fvc::interpolate(psi) * fvc::flux(HbyA));
 
     MRF.makeRelative(fvc::interpolate(psi), phid);
+
+    AtU -= UEqn.H1();
+    HbyA -= (1.0 / AU - 1.0 / AtU) * fvc::grad(p);
 
     while (simple.correctNonOrthogonal())
     {
@@ -90,6 +92,8 @@ else
         }
     }
 }
+
+tUEqn.clear();
 
 if (printToScreen_)
 {
