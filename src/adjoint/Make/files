@@ -19,6 +19,7 @@ DAJacCon/DAJacCon.C
 DALinearEqn/DALinearEqn.C
 DALinearEqn/DALinearEqnASM.C
 DALinearEqn/DALinearEqnFSModel.C
+DALinearEqn/DALinearEqnFSphi.C
 
 DAPartDeriv/DAPartDeriv.C
 

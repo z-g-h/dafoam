@@ -231,8 +231,8 @@ scalar DAFunctionWallHeatFlux::calcFunction()
         const objectRegistry& db = mesh_.thisDb();
         const volScalarField& T = db.lookupObject<volScalarField>("T");
         const volScalarField::Boundary& TBf = T.boundaryField();
-        const volScalarField kappa = db.lookupObject<volScalarField>("kappa");
-        volScalarField::Boundary kappaBf = kappa.boundaryField();
+        const volScalarField& kappa = db.lookupObject<volScalarField>("kappa");
+        const volScalarField::Boundary& kappaBf = kappa.boundaryField();
 
         forAll(wallHeatFluxBf, patchI)
         {

@@ -5,18 +5,18 @@
 
 \*---------------------------------------------------------------------------*/
 
-#include "DALinearEqnFSModel.H"
+#include "DALinearEqnFSphi.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-defineTypeNameAndDebug(DALinearEqnFSModel, 0);
-addToRunTimeSelectionTable(DALinearEqn, DALinearEqnFSModel, dictionary);
+defineTypeNameAndDebug(DALinearEqnFSphi, 0);
+addToRunTimeSelectionTable(DALinearEqn, DALinearEqnFSphi, dictionary);
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-DALinearEqnFSModel::DALinearEqnFSModel(
+DALinearEqnFSphi::DALinearEqnFSphi(
     const fvMesh& mesh,
     const DAOption& daOption,
     const DAIndex& daIndex)
@@ -26,7 +26,7 @@ DALinearEqnFSModel::DALinearEqnFSModel(
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-void DALinearEqnFSModel::createMLRKSP(
+void DALinearEqnFSphi::createMLRKSP(
     const Mat jacMat,
     const Mat jacPCMat,
     KSP ksp)
@@ -78,6 +78,8 @@ void DALinearEqnFSModel::createMLRKSP(
         daOption_.getSubDictOption<label>("adjEqnOption", "asmOverlap");
     word jacMatReOrdering =
         daOption_.getSubDictOption<word>("adjEqnOption", "jacMatReOrdering");
+    label localPCIters =
+        daOption_.getSubDictOption<label>("adjEqnOption", "localPCIters");
     label pcFillLevel =
         daOption_.getSubDictOption<label>("adjEqnOption", "pcFillLevel");
     label gmresMaxIters =
@@ -168,47 +170,30 @@ void DALinearEqnFSModel::createMLRKSP(
     // Set the type of 'MLRGlobalPC'. This will use fieldSplit to split flow variables and model variables
     PCSetType(MLRGlobalPC, PCFIELDSPLIT);
 
-    // get model state name and size
-    label modelStateSize = 0;
-    List<word> modelState;
-    forAll(daIndex_.adjStateNames, idx)
-    {
-        word stateName = daIndex_.adjStateNames[idx];
-        if (daIndex_.adjStateType[stateName] == "modelState")
-        {
-            modelStateSize++;
-            modelState.append(stateName);
-        }
-    }
-
     // exact model state IS
-    IS is_flow, is_model;
-    label nLocalCells = daIndex_.nLocalCells;
-    PetscInt modelState_indices[modelStateSize * nLocalCells];
-    forAll(mesh_.cells(), cellI)
+    IS is_flow, is_phi;
+    label nLocalFaces = daIndex_.nLocalFaces;
+    PetscInt phi_indices[nLocalFaces];
+    forAll(mesh_.faces(), faceI)
     {
-        for (PetscInt idx = 0; idx < modelStateSize; idx++)
-        {
-            PetscInt globalIdx = daIndex_.getGlobalAdjointStateIndex(modelState[idx], cellI);
-            modelState_indices[modelStateSize * cellI + idx] = globalIdx;
-        }
+            PetscInt globalIdx = daIndex_.getGlobalAdjointStateIndex("phi", faceI);
+            phi_indices[faceI] = globalIdx;
     }
-    
-    modelState.clear();
-
-    ISCreateGeneral(PETSC_COMM_WORLD, modelStateSize * nLocalCells, modelState_indices, PETSC_COPY_VALUES, &is_model);
-    ISSort(is_model);
+    ISCreateGeneral(PETSC_COMM_WORLD, nLocalFaces, phi_indices, PETSC_COPY_VALUES, &is_phi);
+    ISSort(is_phi);
 
     // use a complement to get flow state and surfaceState IS
     PetscInt rstart, rend;
     MatGetOwnershipRange(jacPCMat, &rstart, &rend);
-    ISComplement(is_model, rstart, rend, &is_flow);
+    ISComplement(is_phi, rstart, rend, &is_flow);
 
     // set IS to PC
+    PCFieldSplitSetIS(MLRGlobalPC, "phi", is_phi);
     PCFieldSplitSetIS(MLRGlobalPC, "flow", is_flow);
-    PCFieldSplitSetIS(MLRGlobalPC, "model", is_model);
 
-    PCFieldSplitSetType(MLRGlobalPC, PC_COMPOSITE_MULTIPLICATIVE);
+    PCFieldSplitSetType(MLRGlobalPC, PC_COMPOSITE_SCHUR);
+    PCFieldSplitSetSchurPre(MLRGlobalPC, PC_FIELDSPLIT_SCHUR_PRE_SELFP, NULL);
+    PCFieldSplitSetSchurFactType(MLRGlobalPC, PC_FIELDSPLIT_SCHUR_FACT_FULL);
 
     if (daOption_.getOption<label>("debug"))
     {
@@ -225,6 +210,17 @@ void DALinearEqnFSModel::createMLRKSP(
     for (PetscInt i = 0; i < nsub; i++)
     {
         PC subfieldpc;
+        if (i == 0)
+        {
+            KSPSetType(subfieldksp[i], KSPGMRES);
+            KSPSetTolerances(subfieldksp[i], 1e-3, 1e-10, PETSC_DEFAULT, localPCIters);
+            KSPGMRESSetRestart(subfieldksp[i], localPCIters);
+        }
+        else
+        {
+            KSPSetType(subfieldksp[i], KSPPREONLY);
+            
+        }
         KSPGetPC(subfieldksp[i], &subfieldpc);
         PCSetType(subfieldpc, PCASM);
         PCSetUp(subfieldpc);
