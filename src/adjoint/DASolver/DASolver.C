@@ -1070,6 +1070,67 @@ void DASolver::calcdRdWTAD(Mat dRdWT)
     this->updateStateBoundaryConditions();
     this->calcResiduals();
 
+    // we set d[phiRes]/d[phi] = I, this can avoid small pivot to imporve convergence performace
+    if (daOptionPtr_->getOption<label>("phiResOnePCOption"))
+    {
+        labelList adjStateID4GlobalAdjIdx;
+        adjStateID4GlobalAdjIdx.setSize(daIndexPtr_->nGlobalAdjointStates);
+        daIndexPtr_->calcAdjStateID4GlobalAdjIdx(adjStateID4GlobalAdjIdx);
+
+        const PetscInt* cols;
+        const PetscScalar* vals;
+        PetscInt nCols, colI;
+        std::unordered_map<PetscInt, std::unordered_map<PetscInt, PetscScalar>> dSurfaceStateBuffer;
+
+        forAll(stateInfo_["surfaceScalarStates"], idx)
+        {
+            const word surfaceStateName = stateInfo_["surfaceScalarStates"][idx];
+            label surfaceStateId = daIndexPtr_->adjStateID[surfaceStateName];
+
+            /// make dphiRes/dphi = I
+            /// first buffer the dphiRes/dw
+            forAll(meshPtr_->faces(), faceI)
+            {
+                label glbIdx = daIndexPtr_->getGlobalAdjointStateIndex(surfaceStateName, faceI);
+                MatGetRow(dRdWT, glbIdx, &nCols, &cols, &vals);
+                for (PetscInt i = 0; i < nCols; i++)
+                {
+                    colI = cols[i];
+                    if (colI == glbIdx)
+                    {
+                        dSurfaceStateBuffer[glbIdx][colI] = 1.0;
+                    }
+                    else if (adjStateID4GlobalAdjIdx[colI] == surfaceStateId)
+                    {
+                        dSurfaceStateBuffer[glbIdx][colI] = 0.0;
+                    }
+                    else
+                    {
+                        dSurfaceStateBuffer[glbIdx][colI] = vals[i];
+                    }
+                }
+                MatRestoreRow(dRdWT, glbIdx, &nCols, &cols, &vals);
+            }
+
+            adjStateID4GlobalAdjIdx.clear();
+
+            /// restore values
+            for (auto& rowEntry : dSurfaceStateBuffer)
+            {
+                PetscInt row = rowEntry.first;
+                for (auto& colEntry : rowEntry.second)
+                {
+                    PetscInt col = colEntry.first;
+                    PetscScalar val = colEntry.second;
+                    MatSetValue(dRdWT, row, col, val, INSERT_VALUES);
+                }
+            }
+
+            MatAssemblyBegin(dRdWT, MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(dRdWT, MAT_FINAL_ASSEMBLY);
+        }
+    }
+
     wordList writeJacobians;
     daOptionPtr_->getAllOptions().readEntry<wordList>("writeJacobians", writeJacobians);
     if (writeJacobians.found("dRdWT") || writeJacobians.found("all"))
