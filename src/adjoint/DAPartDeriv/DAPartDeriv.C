@@ -522,10 +522,10 @@ void DAPartDeriv::calcPartDerivMat(
                     MatSetValue(jacMat, row, col, val, INSERT_VALUES);
                 }
             }
-        }
 
-        MatAssemblyBegin(jacMat, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(jacMat, MAT_FINAL_ASSEMBLY);
+            MatAssemblyBegin(jacMat, MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(jacMat, MAT_FINAL_ASSEMBLY);
+        }
     }
 
     if (daOption_.getOption<label>("debug"))
