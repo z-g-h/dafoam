@@ -40,7 +40,7 @@ DAResidual::DAResidual(
       daIndex_(daIndex),
       daField_(mesh, daOption, daModel, daIndex)
 {
-        // get molWeight and Cp from thermophysicalProperties
+    // get molWeight and Cp from thermophysicalProperties
     if (mesh.thisDb().foundObject<IOdictionary>("thermophysicalProperties"))
     {
         const IOdictionary& thermoDict = mesh.thisDb().lookupObject<IOdictionary>("thermophysicalProperties");
@@ -182,7 +182,7 @@ void DAResidual::masterFunction(
     }
 
     this->calcResiduals(options);
-    
+
     if (!daOption_.getOption<bool>("frozenTurbulence"))
     {
         daModel.calcResiduals(options);

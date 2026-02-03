@@ -56,7 +56,6 @@ DAResidualRhoPimpleFoam::DAResidualRhoPimpleFoam(
     {
         hasFvSource_ = 1;
     }
-
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

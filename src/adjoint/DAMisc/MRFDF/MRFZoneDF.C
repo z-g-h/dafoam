@@ -397,18 +397,14 @@ void Foam::MRFZoneDF::makeAbsolute(volVectorField& U) const
     }
 }
 
-
 void Foam::MRFZoneDF::makeAbsolute(surfaceScalarField& phi) const
 {
     makeAbsoluteRhoFlux(geometricOneField(), phi);
 }
 
-
-void Foam::MRFZoneDF::makeAbsolute
-(
+void Foam::MRFZoneDF::makeAbsolute(
     const surfaceScalarField& rho,
-    surfaceScalarField& phi
-) const
+    surfaceScalarField& phi) const
 {
     makeAbsoluteRhoFlux(rho, phi);
 }

@@ -147,23 +147,17 @@ Foam::tmp<Foam::volVectorField> Foam::MRFZoneListDF::DDt(
 
 Foam::tmp<Foam::surfaceScalarField> Foam::MRFZoneListDF::phi() const
 {
-    tmp<surfaceScalarField> tphi
-    (
-        new surfaceScalarField
-        (
-            IOobject
-            (
+    tmp<surfaceScalarField> tphi(
+        new surfaceScalarField(
+            IOobject(
                 "phiMRF",
                 mesh_.time().timeName(),
                 mesh_,
                 IOobject::NO_READ,
                 IOobject::NO_WRITE,
-                false
-            ),
+                false),
             mesh_,
-            dimensionedScalar(dimVelocity*dimArea, Zero)            
-        )
-    );
+            dimensionedScalar(dimVelocity * dimArea, Zero)));
 
     surfaceScalarField& phi = tphi.ref();
 
@@ -174,7 +168,6 @@ Foam::tmp<Foam::surfaceScalarField> Foam::MRFZoneListDF::phi() const
 
     return tphi;
 }
-
 
 void Foam::MRFZoneListDF::makeRelative(volVectorField& U) const
 {

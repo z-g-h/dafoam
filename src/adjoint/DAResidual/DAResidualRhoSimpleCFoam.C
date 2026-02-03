@@ -204,7 +204,7 @@ void DAResidualRhoSimpleCFoam::updateIntermediateVariables()
         2, update velocity boundary based on MRF
         3, update fvOptions
     */
-    this->updateThermoVars(); 
+    this->updateThermoVars();
 }
 
 void DAResidualRhoSimpleCFoam::correctBoundaryConditions()

@@ -148,11 +148,9 @@ void Foam::MRFZoneDF::makeRelativeRhoFlux(
 }
 
 template<class RhoFieldType>
-void Foam::MRFZoneDF::makeAbsoluteRhoFlux
-(
+void Foam::MRFZoneDF::makeAbsoluteRhoFlux(
     const RhoFieldType& rho,
-    surfaceScalarField& phi
-) const
+    surfaceScalarField& phi) const
 {
     if (!active_)
     {
@@ -172,11 +170,10 @@ void Foam::MRFZoneDF::makeAbsoluteRhoFlux
     forAll(internalFaces_, i)
     {
         label facei = internalFaces_[i];
-        phii[facei] += rho[facei]*(Omega ^ (Cfi[facei] - origin_)) & Sfi[facei];
+        phii[facei] += rho[facei] * (Omega ^ (Cfi[facei] - origin_)) & Sfi[facei];
     }
 
     surfaceScalarField::Boundary& phibf = phi.boundaryFieldRef();
-
 
     // Included patches
     forAll(includedFaces_, patchi)
@@ -187,8 +184,8 @@ void Foam::MRFZoneDF::makeAbsoluteRhoFlux
 
             phibf[patchi][patchFacei] +=
                 rho.boundaryField()[patchi][patchFacei]
-              * (Omega ^ (Cf.boundaryField()[patchi][patchFacei] - origin_))
-              & Sf.boundaryField()[patchi][patchFacei];
+                    * (Omega ^ (Cf.boundaryField()[patchi][patchFacei] - origin_))
+                & Sf.boundaryField()[patchi][patchFacei];
         }
     }
 
@@ -201,8 +198,8 @@ void Foam::MRFZoneDF::makeAbsoluteRhoFlux
 
             phibf[patchi][patchFacei] +=
                 rho.boundaryField()[patchi][patchFacei]
-              * (Omega ^ (Cf.boundaryField()[patchi][patchFacei] - origin_))
-              & Sf.boundaryField()[patchi][patchFacei];
+                    * (Omega ^ (Cf.boundaryField()[patchi][patchFacei] - origin_))
+                & Sf.boundaryField()[patchi][patchFacei];
         }
     }
 }

@@ -193,7 +193,7 @@ void DALinearEqnFSModel::createMLRKSP(
             modelState_indices[modelStateSize * cellI + idx] = globalIdx;
         }
     }
-    
+
     modelState.clear();
 
     ISCreateGeneral(PETSC_COMM_WORLD, modelStateSize * nLocalCells, modelState_indices, PETSC_COPY_VALUES, &is_model);
