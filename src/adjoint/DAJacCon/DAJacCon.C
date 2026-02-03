@@ -117,7 +117,7 @@ void DAJacCon::initializePetscVecs()
 
 void DAJacCon::setupJacobianConnections(
     Mat conMat,
-    bufferConMap &connections,
+    bufferConMap& connections,
     const PetscInt idxI)
 {
     /*
@@ -257,7 +257,7 @@ void DAJacCon::initializeJacCon(const dictionary& options)
 
     // if PCMode use AD and AD mode is reverse,
     // we need to coloring the dRdWT to get the row coloring.
-    if (daOption_.getOption<word>("PCMode") == "reverse" && daOption_.getSubDictOption<word>("useAD", "mode") == "reverse" )
+    if (daOption_.getOption<word>("PCMode") == "reverse" && daOption_.getSubDictOption<word>("useAD", "mode") == "reverse")
     {
         this->preallocateJacobianMatrix(
             jacCon_,
@@ -300,7 +300,7 @@ void DAJacCon::setupJacCon(const dictionary& options)
 }
 
 void DAJacCon::addStateConnections(
-    bufferConMap &connections,
+    bufferConMap& connections,
     const label cellI,
     const label connectedLevelLocal,
     const wordList connectedStatesLocal,
@@ -665,7 +665,7 @@ void DAJacCon::addStateConnections(
 }
 
 void DAJacCon::setConnections(
-    bufferConMap &conMat,
+    bufferConMap& conMat,
     const label idx) const
 {
 
@@ -791,7 +791,6 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
         fieldNeiBFaceGlobalCompactTemp[idx] = -1;
     }
 
-
     // loop over the patches and store the global indices
     label counter = 0;
 
@@ -821,14 +820,14 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
     forAll(patches, patchI)
     {
         label faceIStart = patches[patchI].start();
-        
+
         if (patches[patchI].type() == "cyclicAMI" or patches[patchI].type() == "mixingPlane")
         {
             if (patches[patchI].type() == "cyclicAMI")
             {
                 const cyclicAMIPolyPatch& pp = refCast<const cyclicAMIPolyPatch>(patches[patchI]);
 
-                /// get neighbour face index 
+                /// get neighbour face index
                 label neiBFaceIStart = pp.neighbPatch().start();
 
                 /// check whether or not owner ? if onwer use srcAddress, else user tgtAddress
@@ -837,7 +836,7 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
                     labelListList srcBFaceAddress = pp.AMI().srcAddress();
                     forAll(srcBFaceAddress, srcBFacei)
                     {
-                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + srcBFacei;   
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + srcBFacei;
                         forAll(srcBFaceAddress[srcBFacei], neiBFacei)
                         {
                             label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + srcBFaceAddress[srcBFacei][neiBFacei];
@@ -851,8 +850,8 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
                 {
                     labelListList tgtBFaceAddress = pp.neighbPatch().AMI().tgtAddress();
                     forAll(tgtBFaceAddress, tgtBFacei)
-                    {   
-                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + tgtBFacei;   
+                    {
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + tgtBFacei;
                         forAll(tgtBFaceAddress[tgtBFacei], neiBFacei)
                         {
                             label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + tgtBFaceAddress[tgtBFacei][neiBFacei];
@@ -860,24 +859,24 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
                             label globalNeiBFaceIndex = fieldNeiBFaceGlobalCompactTemp[neiBFaceI];
                             fieldNeiBFaceGlobalCompact[bFaceI].append(globalNeiBFaceIndex);
                         }
-                    }                        
+                    }
                 }
             }
             else if (patches[patchI].type() == "mixingPlane")
             {
                 const mixingPlanePolyPatch& pp = refCast<const mixingPlanePolyPatch>(patches[patchI]);
-                /// get neighbour face index 
+                /// get neighbour face index
                 label neiBFaceIStart = pp.neighbPatch().start();
 
                 if (pp.owner())
                 {
-                    /// collect srcAddress 
+                    /// collect srcAddress
                     const labelListList& masterProfileToPatchAddress = pp.MPI().masterProfileToPatchAddr();
                     const labelListList& slavePatchToProfileAddress = pp.MPI().slavePatchToProfileAddr();
                     labelListList srcAddress;
                     srcAddress.setSize(masterProfileToPatchAddress.size());
                     forAll(masterProfileToPatchAddress, masterFaceI)
-                    {   
+                    {
                         labelList masterProfileFaces = masterProfileToPatchAddress[masterFaceI];
                         forAll(masterProfileFaces, masterProfileFaceI)
                         {
@@ -897,7 +896,7 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
                     /// construct fieldNeiBFaceGlobalCompact
                     forAll(srcAddress, srcBFacei)
                     {
-                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + srcBFacei;   
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + srcBFacei;
                         forAll(srcAddress[srcBFacei], neiBFacei)
                         {
                             label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + srcAddress[srcBFacei][neiBFacei];
@@ -909,10 +908,10 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
                 }
                 else
                 {
-                    /// collect tgtAddress 
+                    /// collect tgtAddress
                     const labelListList& masterPatchToProfileAddress = pp.neighbPatch().MPI().masterPatchToProfileAddr();
-                    const labelListList& slaveProfileToPatchAddress = pp.neighbPatch().MPI().slaveProfileToPatchAddr(); 
-                    labelListList tgtAddress;   
+                    const labelListList& slaveProfileToPatchAddress = pp.neighbPatch().MPI().slaveProfileToPatchAddr();
+                    labelListList tgtAddress;
                     tgtAddress.setSize(slaveProfileToPatchAddress.size());
                     forAll(slaveProfileToPatchAddress, slaveFaceI)
                     {
@@ -934,8 +933,8 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
                     }
                     /// construct fieldNeiBFaceGlobalCompact
                     forAll(tgtAddress, tgtBFacei)
-                    {   
-                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + tgtBFacei;   
+                    {
+                        label bFaceI = faceIStart - daIndex_.nLocalInternalFaces + tgtBFacei;
                         forAll(tgtAddress[tgtBFacei], neiBFacei)
                         {
                             label neiBFaceI = neiBFaceIStart - daIndex_.nLocalInternalFaces + tgtAddress[tgtBFacei][neiBFacei];
@@ -1013,7 +1012,7 @@ label DAJacCon::getLocalFieldCoupledBFaceIndex(const label localFaceI) const
     Output:
         bRow: A list of faces starts with the first inter-processor face. 
         See DAJacCon::globalBndNumbering_ for more details.
-    */    
+    */
 
     label counter = 0;
     forAll(mesh_.boundaryMesh(), patchI)
@@ -1043,7 +1042,7 @@ label DAJacCon::getLocalFieldCoupledBFaceIndex(const label localFaceI) const
     }
 
     // no match found
-    FatalErrorIn("getLocalFieldBndFaceIndex") << abort(FatalError);    
+    FatalErrorIn("getLocalFieldBndFaceIndex") << abort(FatalError);
     return -1;
 }
 
@@ -1153,7 +1152,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
 
                 // Now get the cell that borders this coupled bFace
                 label idxN = pFaceCells[faceI];
-                
+
                 // This cell is already a neighbour cell, so we need this plus two
                 // more levels
                 // Start with next to nearest neighbours
@@ -1176,7 +1175,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                         }
                     }
                 }
-            }            
+            }
         }
     }
 
@@ -1245,7 +1244,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                             2.0);
                     }
                 }
-            }            
+            }
         }
     }
 
@@ -1306,7 +1305,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                         stateName,
                         10.0); // for faces, its connectivity level is 10
                 }
-            }             
+            }
         }
     }
 
@@ -1372,7 +1371,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                             1.0);
                     }
                 }
-            }            
+            }
         }
     }
 
@@ -1387,19 +1386,21 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
         PETSC_DETERMINE);
     MatSetFromOptions(*stateBoundaryCon);
     /// prelocation
-    preallocateStateBndCon(daIndex_.nLocalCoupledBFaces,stateBoundaryCon, stateBoundaryCon_map_tmp);
+    preallocateStateBndCon(daIndex_.nLocalCoupledBFaces, stateBoundaryCon, stateBoundaryCon_map_tmp);
 
     MatSetOption(*stateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
     MatSetUp(*stateBoundaryCon);
     MatZeroEntries(*stateBoundaryCon);
 
     /// insert values to stateBoundaryCon from stateBoundaryCon_map
-    for (auto &rowEntry : stateBoundaryCon_map_tmp) {
+    for (auto& rowEntry : stateBoundaryCon_map_tmp)
+    {
         PetscInt row = rowEntry.first;
-        for (auto &colEntry : rowEntry.second) {
+        for (auto& colEntry : rowEntry.second)
+        {
             PetscInt col = colEntry.first;
             PetscScalar val = colEntry.second;
-            MatSetValues(*stateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            MatSetValues(*stateBoundaryCon, 1, &row, 1, &col, &val, INSERT_VALUES);
         }
     }
 
@@ -1416,19 +1417,21 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
         PETSC_DETERMINE);
     MatSetFromOptions(*fieldStateBoundaryCon);
     /// prelocation
-    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces,fieldStateBoundaryCon, fieldStateBoundaryCon_map_tmp);
+    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces, fieldStateBoundaryCon, fieldStateBoundaryCon_map_tmp);
 
     MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
     MatSetUp(*fieldStateBoundaryCon);
     MatZeroEntries(*fieldStateBoundaryCon);
 
     /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
-    for (auto &rowEntry : fieldStateBoundaryCon_map_tmp) {
+    for (auto& rowEntry : fieldStateBoundaryCon_map_tmp)
+    {
         PetscInt row = rowEntry.first;
-        for (auto &colEntry : rowEntry.second) {
+        for (auto& colEntry : rowEntry.second)
+        {
             PetscInt col = colEntry.first;
             PetscScalar val = colEntry.second;
-            MatSetValues(*fieldStateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            MatSetValues(*fieldStateBoundaryCon, 1, &row, 1, &col, &val, INSERT_VALUES);
         }
     }
 
@@ -1508,7 +1511,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                         connectedStates,
                         0);
                 }
-            }            
+            }
         }
     }
 
@@ -1568,7 +1571,7 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                     vals2,
                     connectedStates,
                     0);
-            }            
+            }
         }
     }
 
@@ -1628,21 +1631,21 @@ void DAJacCon::setupStateBoundaryCon(Mat* stateBoundaryCon, Mat* fieldStateBound
                     vals1,
                     connectedStates,
                     0);
-            }            
+            }
         }
     }
 
     // the above repeat loop is not enough to cover all the stencil, we need to do more
     this->combineStateBndCon(stateBoundaryCon, stateBoundaryCon_map_tmp, fieldStateBoundaryCon, fieldStateBoundaryCon_map_tmp);
-    
+
     return;
 }
 
 void DAJacCon::combineStateBndCon(
     Mat* stateBoundaryCon,
-    bufferConMap &stateCon_map,
+    bufferConMap& stateCon_map,
     Mat* fieldStateBoundaryCon,
-    bufferConMap &fieldStateCon_map)
+    bufferConMap& fieldStateCon_map)
 {
     /*
     Description:
@@ -1663,7 +1666,7 @@ void DAJacCon::combineStateBndCon(
     Input/Output:
         stateBoundaryCon, and stateBoundaryConTmp should come from DAJacCon::stateBoundaryCon
     */
-    
+
     // Destroy and initialize stateBoundaryCon with zeros
     MatDestroy(stateBoundaryCon);
     MatCreate(PETSC_COMM_WORLD, stateBoundaryCon);
@@ -1686,19 +1689,19 @@ void DAJacCon::combineStateBndCon(
     /// temporary store values to rollback for next unneeded repalce
     bufferConMap stateCon_map_tmp;
     /// insert values to stateBoundaryCon from stateBoundaryCon_map
-    for (auto &rowEntry : stateCon_map) 
+    for (auto& rowEntry : stateCon_map)
     {
         PetscInt row = rowEntry.first;
-        for (auto &colEntry : rowEntry.second) 
+        for (auto& colEntry : rowEntry.second)
         {
             PetscInt col = colEntry.first;
             PetscScalar val = colEntry.second;
-            MatSetValues(*stateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            MatSetValues(*stateBoundaryCon, 1, &row, 1, &col, &val, INSERT_VALUES);
             stateCon_map_tmp[row][col] = val;
         }
     }
-    MatAssemblyBegin(*stateBoundaryCon, MAT_FINAL_ASSEMBLY); 
-    MatAssemblyEnd(*stateBoundaryCon, MAT_FINAL_ASSEMBLY); 
+    MatAssemblyBegin(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*stateBoundaryCon, MAT_FINAL_ASSEMBLY);
 
     // Destroy and initialize fieldStateBoundaryCon with zeros
     MatDestroy(fieldStateBoundaryCon);
@@ -1712,29 +1715,30 @@ void DAJacCon::combineStateBndCon(
     MatSetFromOptions(*fieldStateBoundaryCon);
 
     /// preallocation stateBoundaryCon
-    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces, fieldStateBoundaryCon,fieldStateCon_map);
+    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces, fieldStateBoundaryCon, fieldStateCon_map);
     // MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL, 2000, NULL);
     // MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL);
     MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
     MatSetUp(*fieldStateBoundaryCon);
     MatZeroEntries(*fieldStateBoundaryCon); // initialize with zeros
-    
+
     /// temporary store values to rollback for next unneeded repalce
     bufferConMap fieldStateCon_map_tmp;
     /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
-    for (auto &rowEntry : fieldStateCon_map) {
+    for (auto& rowEntry : fieldStateCon_map)
+    {
         PetscInt row = rowEntry.first;
-        for (auto &colEntry : rowEntry.second) {
+        for (auto& colEntry : rowEntry.second)
+        {
             PetscInt col = colEntry.first;
             PetscScalar val = colEntry.second;
-            MatSetValues(*fieldStateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            MatSetValues(*fieldStateBoundaryCon, 1, &row, 1, &col, &val, INSERT_VALUES);
             fieldStateCon_map_tmp[row][col] = val;
         }
     }
 
     MatAssemblyBegin(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*fieldStateBoundaryCon, MAT_FINAL_ASSEMBLY);
-
 
     // We need to do another loop adding boundary connections from other procs using ConMat
     // this will add missing connectivity if the stateBoundaryCon stencil extends through
@@ -1788,7 +1792,7 @@ void DAJacCon::combineStateBndCon(
                 faceIStart++;
                 labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
                 label idxN = pFaceCells[faceI];
-                
+
                 forAll(mesh_.cellCells()[idxN], cellI)
                 {
                     label localCell = mesh_.cellCells()[idxN][cellI];
@@ -1803,7 +1807,7 @@ void DAJacCon::combineStateBndCon(
                         connectedStates,
                         0);
                 }
-            }             
+            }
         }
     }
 
@@ -1854,7 +1858,7 @@ void DAJacCon::combineStateBndCon(
                     vals2,
                     connectedStates,
                     0);
-            }            
+            }
         }
     }
 
@@ -1893,7 +1897,7 @@ void DAJacCon::combineStateBndCon(
                 faceIStart++;
                 labelList gRows = fieldNeiBFaceGlobalCompact_[bFaceI];
                 label idxN = pFaceCells[faceI];
-                
+
                 // now add the neighbour cells
                 labelList vals1 = {2};
                 // pass a zero list to add all states
@@ -1905,7 +1909,7 @@ void DAJacCon::combineStateBndCon(
                     vals1,
                     connectedStates,
                     0);
-            }            
+            }
         }
     }
 
@@ -1914,14 +1918,14 @@ void DAJacCon::combineStateBndCon(
     // up the existing stencil in stateBoundaryCon. So we need to do a check to make sure that
     // stateBoundaryConTmp only add stencil, not replacing any existing stencil in stateBoundaryCon.
     // If anything in stateBoundaryCon is replaced, rollback the changes.
-    for (auto &rowEntry : stateCon_map) 
+    for (auto& rowEntry : stateCon_map)
     {
         PetscInt row = rowEntry.first;
         auto tmpRowEntry = stateCon_map_tmp.find(row);
         /// judge whether this row exists in the tmp map
         if (tmpRowEntry != stateCon_map_tmp.end())
         {
-            for (auto &colEntry : rowEntry.second) 
+            for (auto& colEntry : rowEntry.second)
             {
                 PetscInt col = colEntry.first;
                 auto tmpColEntry = tmpRowEntry->second.find(col);
@@ -1935,14 +1939,14 @@ void DAJacCon::combineStateBndCon(
     }
 
     /// rollback for fieldStateCon_map
-    for (auto &rowEntry : fieldStateCon_map) 
+    for (auto& rowEntry : fieldStateCon_map)
     {
         PetscInt row = rowEntry.first;
         auto tmpRowEntry = fieldStateCon_map_tmp.find(row);
         /// judge whether this row exists in the tmp map
         if (tmpRowEntry != fieldStateCon_map_tmp.end())
         {
-            for (auto &colEntry : rowEntry.second) 
+            for (auto& colEntry : rowEntry.second)
             {
                 PetscInt col = colEntry.first;
                 auto tmpColEntry = tmpRowEntry->second.find(col);
@@ -1966,7 +1970,7 @@ void DAJacCon::combineStateBndCon(
             // get the start index of this patch in the global face list
             label faceIStart = pp.start();
 
-            if ( pp.type() == "mixingPlane")
+            if (pp.type() == "mixingPlane")
             {
                 forAll(pp, faceI)
                 {
@@ -1977,7 +1981,7 @@ void DAJacCon::combineStateBndCon(
 
                     // Now get the cell that borders this coupled bFace
                     label idxN = pFaceCells[faceI];
-                
+
                     // This cell is already a neighbour cell, so we need this plus two
                     // more levels
                     // Start with next to nearest neighbours
@@ -2000,7 +2004,7 @@ void DAJacCon::combineStateBndCon(
                             }
                         }
                     }
-                }            
+                }
             }
         }
 
@@ -2012,7 +2016,7 @@ void DAJacCon::combineStateBndCon(
             // get the start index of this patch in the global face list
             label faceIStart = pp.start();
 
-            if ( pp.type() == "mixingPlane")
+            if (pp.type() == "mixingPlane")
             {
                 forAll(pp, faceI)
                 {
@@ -2039,7 +2043,7 @@ void DAJacCon::combineStateBndCon(
                                 2.0);
                         }
                     }
-                }            
+                }
             }
         }
 
@@ -2051,7 +2055,7 @@ void DAJacCon::combineStateBndCon(
             // get the start index of this patch in the global face list
             label faceIStart = pp.start();
 
-            if ( pp.type() == "mixingPlane")
+            if (pp.type() == "mixingPlane")
             {
                 forAll(pp, faceI)
                 {
@@ -2074,7 +2078,7 @@ void DAJacCon::combineStateBndCon(
                             stateName,
                             10.0);
                     }
-                }            
+                }
             }
         }
 
@@ -2086,7 +2090,7 @@ void DAJacCon::combineStateBndCon(
             // get the start index of this patch in the global face list
             label faceIStart = pp.start();
 
-            if ( pp.type() == "mixingPlane")
+            if (pp.type() == "mixingPlane")
             {
                 forAll(pp, faceI)
                 {
@@ -2135,15 +2139,17 @@ void DAJacCon::combineStateBndCon(
 
     MatSetOption(*stateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
     MatSetUp(*stateBoundaryCon);
-    MatZeroEntries(*stateBoundaryCon); // initialize with zeros    
+    MatZeroEntries(*stateBoundaryCon); // initialize with zeros
 
     /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
-    for (auto &rowEntry : stateCon_map) {
+    for (auto& rowEntry : stateCon_map)
+    {
         PetscInt row = rowEntry.first;
-        for (auto &colEntry : rowEntry.second) {
+        for (auto& colEntry : rowEntry.second)
+        {
             PetscInt col = colEntry.first;
             PetscScalar val = colEntry.second;
-            MatSetValues(*stateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            MatSetValues(*stateBoundaryCon, 1, &row, 1, &col, &val, INSERT_VALUES);
         }
     }
 
@@ -2162,21 +2168,23 @@ void DAJacCon::combineStateBndCon(
     MatSetFromOptions(*fieldStateBoundaryCon);
 
     /// preallocation stateBoundaryCon
-    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces, fieldStateBoundaryCon,fieldStateCon_map);
+    preallocateStateBndCon(daIndex_.nLocalFieldCoupledBFaces, fieldStateBoundaryCon, fieldStateCon_map);
     // MatMPIAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL, 2000, NULL);
     // MatSeqAIJSetPreallocation(*fieldStateBoundaryCon, 2000, NULL);
 
     MatSetOption(*fieldStateBoundaryCon, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_TRUE);
     MatSetUp(*fieldStateBoundaryCon);
-    MatZeroEntries(*fieldStateBoundaryCon); // initialize with zeros    
+    MatZeroEntries(*fieldStateBoundaryCon); // initialize with zeros
 
     /// insert values to fieldStateBoundaryCon from fieldStateBoundaryCon_map
-    for (auto &rowEntry : fieldStateCon_map) {
+    for (auto& rowEntry : fieldStateCon_map)
+    {
         PetscInt row = rowEntry.first;
-        for (auto &colEntry : rowEntry.second) {
+        for (auto& colEntry : rowEntry.second)
+        {
             PetscInt col = colEntry.first;
             PetscScalar val = colEntry.second;
-            MatSetValues(*fieldStateBoundaryCon,1,&row,1,&col,&val,INSERT_VALUES);
+            MatSetValues(*fieldStateBoundaryCon, 1, &row, 1, &col, &val, INSERT_VALUES);
         }
     }
 
@@ -2186,11 +2194,10 @@ void DAJacCon::combineStateBndCon(
     return;
 }
 
-
 void DAJacCon::preallocateStateBndCon(
     PetscInt localRows,
     Mat* bndConMat,
-    bufferConMap &con_map)
+    bufferConMap& con_map)
 {
     /*  
     Description:
@@ -2202,8 +2209,8 @@ void DAJacCon::preallocateStateBndCon(
         bndConMat: the matrix to be preallocated
         con_map: the connectivity map used to determine the preallocation size
     */
-    PetscMPIInt    rank, size; 
-    PetscInt      *allstarts = NULL, *allends = NULL, *allcolMins = NULL, *allcolMaxs = NULL;
+    PetscMPIInt rank, size;
+    PetscInt *allstarts = NULL, *allends = NULL, *allcolMins = NULL, *allcolMaxs = NULL;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
@@ -2222,19 +2229,19 @@ void DAJacCon::preallocateStateBndCon(
     PetscInt colMax = colMin + daIndex_.nLocalAdjointStates;
 
     /// collect all processor Istart, Iend, colMin, colMax
-    PetscMalloc4(size,&allstarts,size,&allends,size,&allcolMins,size,&allcolMaxs);
-    MPI_Allgather(&Istart,1,MPIU_INT,allstarts,1,MPIU_INT,PETSC_COMM_WORLD);
-    MPI_Allgather(&Iend,1,MPIU_INT,allends,1,MPIU_INT,PETSC_COMM_WORLD);
-    MPI_Allgather(&colMin,1,MPIU_INT,allcolMins,1,MPIU_INT,PETSC_COMM_WORLD);
-    MPI_Allgather(&colMax,1,MPIU_INT,allcolMaxs,1,MPIU_INT,PETSC_COMM_WORLD);
+    PetscMalloc4(size, &allstarts, size, &allends, size, &allcolMins, size, &allcolMaxs);
+    MPI_Allgather(&Istart, 1, MPIU_INT, allstarts, 1, MPIU_INT, PETSC_COMM_WORLD);
+    MPI_Allgather(&Iend, 1, MPIU_INT, allends, 1, MPIU_INT, PETSC_COMM_WORLD);
+    MPI_Allgather(&colMin, 1, MPIU_INT, allcolMins, 1, MPIU_INT, PETSC_COMM_WORLD);
+    MPI_Allgather(&colMax, 1, MPIU_INT, allcolMaxs, 1, MPIU_INT, PETSC_COMM_WORLD);
 
-    for (auto &rowEntry : con_map) 
+    for (auto& rowEntry : con_map)
     {
         PetscInt idxI = rowEntry.first;
-        for (auto &colEntry : rowEntry.second) 
+        for (auto& colEntry : rowEntry.second)
         {
             PetscInt idxJ = colEntry.first;
-            /// we need to find which processor own idxI 
+            /// we need to find which processor own idxI
             for (PetscInt p = 0; p < size; p++)
             {
                 if (allstarts[p] <= idxI and idxI < allends[p])
@@ -2245,13 +2252,13 @@ void DAJacCon::preallocateStateBndCon(
                     }
                     else
                     {
-                        VecSetValue(conPreallocOff, idxI, 1.0, ADD_VALUES);                
+                        VecSetValue(conPreallocOff, idxI, 1.0, ADD_VALUES);
                     }
                     break;
                 }
             }
         }
-    }    
+    }
 
     VecAssemblyBegin(conPreallocOn);
     VecAssemblyEnd(conPreallocOn);
@@ -2259,7 +2266,7 @@ void DAJacCon::preallocateStateBndCon(
     VecAssemblyEnd(conPreallocOff);
 
     PetscScalar *onVec, *offVec;
-    PetscInt onSize[localRows], offSize[localRows];   
+    PetscInt onSize[localRows], offSize[localRows];
 
     VecGetArray(conPreallocOn, &onVec);
     VecGetArray(conPreallocOff, &offVec);
@@ -2274,7 +2281,7 @@ void DAJacCon::preallocateStateBndCon(
     }
 
     VecRestoreArray(conPreallocOn, &onVec);
-    VecRestoreArray(conPreallocOff, &offVec);     
+    VecRestoreArray(conPreallocOff, &offVec);
 
     MatMPIAIJSetPreallocation(*bndConMat, NULL, onSize, NULL, offSize);
     MatSeqAIJSetPreallocation(*bndConMat, NULL, onSize);
@@ -2282,7 +2289,6 @@ void DAJacCon::preallocateStateBndCon(
     VecDestroy(&conPreallocOn);
     VecDestroy(&conPreallocOff);
     return;
-
 }
 
 void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateBoundaryConID)
@@ -2311,7 +2317,7 @@ void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateB
     daIndex_.calcAdjStateID4GlobalAdjIdx(adjStateID4GlobalAdjIdx);
 
     MatDuplicate(stateBoundaryCon_, MAT_DO_NOT_COPY_VALUES, stateBoundaryConID);
- 
+
     MatDuplicate(fieldStateBoundaryCon_, MAT_DO_NOT_COPY_VALUES, fieldStateBoundaryConID);
 
     MatGetOwnershipRange(stateBoundaryCon_, &Istart, &Iend);
@@ -2362,7 +2368,7 @@ void DAJacCon::setupStateBoundaryConID(Mat* stateBoundaryConID, Mat* fieldStateB
 }
 
 void DAJacCon::addConMatCell(
-    bufferConMap &conMat,
+    bufferConMap& conMat,
     const label gRow,
     const label cellI,
     const word stateName,
@@ -2421,7 +2427,7 @@ void DAJacCon::addConMatCell(
 }
 
 void DAJacCon::addConMatCell(
-    bufferConMap &con_map,
+    bufferConMap& con_map,
     const labelList gRows,
     const label cellI,
     const word stateName,
@@ -2455,7 +2461,7 @@ void DAJacCon::addConMatCell(
 }
 
 void DAJacCon::addConMatNeighbourCells(
-    bufferConMap &conMat,
+    bufferConMap& conMat,
     const label gRow,
     const label cellI,
     const word stateName,
@@ -2524,7 +2530,7 @@ void DAJacCon::addConMatNeighbourCells(
 }
 
 void DAJacCon::addConMatNeighbourCells(
-    bufferConMap &con_map,
+    bufferConMap& con_map,
     const labelList gRows,
     const label cellI,
     const word stateName,
@@ -2566,7 +2572,7 @@ void DAJacCon::addConMatNeighbourCells(
 }
 
 void DAJacCon::addConMatCellFaces(
-    bufferConMap &conMat,
+    bufferConMap& conMat,
     const label gRow,
     const label cellI,
     const word stateName,
@@ -2622,7 +2628,7 @@ void DAJacCon::addConMatCellFaces(
 }
 
 void DAJacCon::addConMatCellFaces(
-    bufferConMap &con_map,
+    bufferConMap& con_map,
     const labelList gRows,
     const label cellI,
     const word stateName,
@@ -2654,7 +2660,7 @@ void DAJacCon::addConMatCellFaces(
 }
 
 void DAJacCon::addBoundaryFaceConnections(
-    bufferConMap &conMat,
+    bufferConMap& conMat,
     const label gRow,
     const label cellI,
     const labelList v,
@@ -2854,8 +2860,8 @@ void DAJacCon::addBoundaryFaceConnections(
                     {
                         // check if we need to get stateID
                         MatGetRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
-                    }   
-                    
+                    }
+
                     // now loop over the row and set any column that match this level
                     // in conMat
                     for (label i = 0; i < nCols; i++)
@@ -2904,7 +2910,7 @@ void DAJacCon::addBoundaryFaceConnections(
                     {
                         // check if we need to get stateID
                         MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
-                    }     
+                    }
                 }
             }
         }
@@ -2914,7 +2920,7 @@ void DAJacCon::addBoundaryFaceConnections(
 }
 
 void DAJacCon::addBoundaryFaceConnections(
-    bufferConMap &con_map,
+    bufferConMap& con_map,
     const labelList gRows,
     const label cellI,
     const labelList v,
@@ -2967,7 +2973,7 @@ void DAJacCon::addBoundaryFaceConnections(
         {
             // Now deal with coupled faces
             label currFace = faces[faceI];
-            
+
             // only deal with processor coupled face
             if (daIndex_.isCoupledFace[currFace])
             {
@@ -2988,7 +2994,7 @@ void DAJacCon::addBoundaryFaceConnections(
                     {
                         // check if we need to get stateID
                         MatGetRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
-                    }  
+                    }
 
                     // now loop over the row and set any column that match this level
                     // in conMat
@@ -3024,7 +3030,7 @@ void DAJacCon::addBoundaryFaceConnections(
                             PetscScalar valIn = v[lv - 1];
                             forAll(gRows, idxI)
                             {
-                                con_map[gRows[idxI]][idxJ] = valIn; 
+                                con_map[gRows[idxI]][idxJ] = valIn;
                             }
                         }
                         if (val == 10 && addFaces)
@@ -3033,7 +3039,7 @@ void DAJacCon::addBoundaryFaceConnections(
                             PetscScalar valIn = v[lv - 1];
                             forAll(gRows, idxI)
                             {
-                                con_map[gRows[idxI]][idxJ] = valIn; 
+                                con_map[gRows[idxI]][idxJ] = valIn;
                             }
                         }
                     }
@@ -3058,7 +3064,7 @@ void DAJacCon::addBoundaryFaceConnections(
                     {
                         // check if we need to get stateID
                         MatGetRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
-                    } 
+                    }
 
                     // now loop over the row and set any column that match this level
                     // in conMat
@@ -3094,7 +3100,7 @@ void DAJacCon::addBoundaryFaceConnections(
                             PetscScalar valIn = v[lv - 1];
                             forAll(gRows, idxI)
                             {
-                                con_map[gRows[idxI]][idxJ] = valIn; 
+                                con_map[gRows[idxI]][idxJ] = valIn;
                             }
                         }
                         if (val == 10 && addFaces)
@@ -3103,7 +3109,7 @@ void DAJacCon::addBoundaryFaceConnections(
                             PetscScalar valIn = v[lv - 1];
                             forAll(gRows, idxI)
                             {
-                                con_map[gRows[idxI]][idxJ] = valIn; 
+                                con_map[gRows[idxI]][idxJ] = valIn;
                             }
                         }
                     }
@@ -3115,7 +3121,7 @@ void DAJacCon::addBoundaryFaceConnections(
                         // check if we need to get stateID
                         MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                     }
-                }    
+                }
             }
         }
     }
@@ -3764,8 +3770,8 @@ void DAJacCon::setupdRdWCon(
                     MatRestoreRow(stateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
                     MatRestoreRow(stateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                 }
-                else if ((mesh_.boundaryMesh()[patchIdx].type() == "cyclicAMI" or mesh_.boundaryMesh()[patchIdx].type() == "mixingPlane") 
-                            and daOption_.getOption<bool>("adjFieldCouplingColoring"))
+                else if ((mesh_.boundaryMesh()[patchIdx].type() == "cyclicAMI" or mesh_.boundaryMesh()[patchIdx].type() == "mixingPlane")
+                         and daOption_.getOption<bool>("adjFieldCouplingColoring"))
                 {
                     label bRow = this->getLocalFieldCoupledBFaceIndex(faceI);
                     label bRowGlobal = daIndex_.globalFieldCoupledBFaceNumbering.toGlobal(bRow);
@@ -3796,7 +3802,7 @@ void DAJacCon::setupdRdWCon(
                         }
                     }
                     MatRestoreRow(fieldStateBoundaryCon_, bRowGlobal, &nCols, &cols, &vals);
-                    MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);                    
+                    MatRestoreRow(fieldStateBoundaryConID_, bRowGlobal, &nColsID, &colsID, &valsID);
                 }
             }
 
@@ -3878,7 +3884,7 @@ void DAJacCon::allocateJacobianConnections(
     Vec preallocOffProc,
     Vec preallocOnProcT,
     Vec preallocOffProcT,
-    bufferConMap &connections,
+    bufferConMap& connections,
     const label row)
 {
     /*
@@ -3927,7 +3933,7 @@ void DAJacCon::allocateJacobianConnections(
             if (DAUtility::isValueCloseToRef(cols.second, 1.0))
             {
                 totalCount++;
-                label idxJ = cols.first;    
+                label idxJ = cols.first;
                 // Set the transposed version as well
                 if (colMin <= idxJ && idxJ < colMax)
                 {

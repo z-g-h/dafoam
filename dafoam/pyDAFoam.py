@@ -358,7 +358,9 @@ class DAOPTION(object):
         ## Which options to use to improve the adjoint equation convergence of transonic conditions
         ## This is used only for transonic solvers such as DARhoSimpleCFoam
         self.transonicPCOption = -1
-        self.subsonicPCOption = -1
+
+        ## Options to set PCJacobian d[phiRes]/d[phi] = I to avoid small pivot in jacobian of phiRes
+        self.phiResOnePCOption = False
 
         ## Options for unsteady adjoint. mode can be hybrid or timeAccurate
         ## Here nTimeInstances is the number of time instances and periodicity is the

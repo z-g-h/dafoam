@@ -8,8 +8,8 @@
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef DALinearEqnFSphi_H
-#define DALinearEqnFSphi_H
+#ifndef DALinearEqnFS_H
+#define DALinearEqnFS_H
 
 #include "DALinearEqn.H"
 #include "addToRunTimeSelectionTable.H"
@@ -23,28 +23,28 @@ namespace Foam
                        Class DALinearEqn Declaration
 \*---------------------------------------------------------------------------*/
 
-class DALinearEqnFSphi
+class DALinearEqnFS
     : public DALinearEqn
 {
 
 private:
     /// Disallow default bitwise copy construct
-    DALinearEqnFSphi(const DALinearEqnFSphi&);
+    DALinearEqnFS(const DALinearEqnFS&);
 
     /// Disallow default bitwise assignment
-    void operator=(const DALinearEqnFSphi&);
+    void operator=(const DALinearEqnFS&);
 
 public:
-    TypeName("FSphi");
+    TypeName("FS");
 
     /// Constructors
-    DALinearEqnFSphi(
+    DALinearEqnFS(
         const fvMesh& mesh,
         const DAOption& daOption,
         const DAIndex& daIndex);
 
     /// Destructor
-    virtual ~DALinearEqnFSphi()
+    virtual ~DALinearEqnFS()
     {
     }
 

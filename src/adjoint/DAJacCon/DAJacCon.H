@@ -25,7 +25,7 @@
 #include "labelList.H"
 #include "mixingPlanePolyPatch.H"
 #include <unordered_map>
-#include <utility> 
+#include <utility>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -82,7 +82,7 @@ protected:
     Mat fieldStateBoundaryConID_;
 
     /// neibough face global index for a given local boundary face
-    ///     for coupled boundary    
+    ///     for coupled boundary
     labelList neiBFaceGlobalCompact_;
     ///     for field coupled boundary e.g. cyclicAMI, mixingPlane
     labelListList fieldNeiBFaceGlobalCompact_;
@@ -128,7 +128,7 @@ protected:
 
     /// a high-level function to add connected state column indices to the connectivity matrix
     void addStateConnections(
-        bufferConMap &connections,
+        bufferConMap& connections,
         const label cellI,
         const label connectedLevelLocal,
         const wordList connectedStatesLocal,
@@ -137,31 +137,31 @@ protected:
 
     /// add value 1 for the colume idx to conMat
     void setConnections(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const label idx) const;
 
     /// assign values in connections to a specific row idxI in conMat
     void setupJacobianConnections(
         Mat conMat,
-        bufferConMap &connections,
+        bufferConMap& connections,
         const label idxI);
 
     /// combine stateBoundaryCon and stateBoundaryConTmp, this is to ensure including all connected states for parallel cases
     void combineStateBndCon(
         Mat* stateBoundaryCon,
-        bufferConMap &stateCon_map,
+        bufferConMap& stateCon_map,
         Mat* fieldStateBoundaryCon,
-        bufferConMap &fieldStateCon_map);
-    
+        bufferConMap& fieldStateCon_map);
+
     /// preallocate stateBoundaryCon and fieldStateBoundaryCon
     void preallocateStateBndCon(
         PetscInt localrows,
         Mat* bndConMat,
-        bufferConMap &con_map);
+        bufferConMap& con_map);
 
     /// add val to the gRow row in conMat, the column indice are the state (given by stateName) for a given cellI
     void addConMatCell(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const label gRow,
         const label cellI,
         const word stateName,
@@ -169,7 +169,7 @@ protected:
 
     /// overload function for cyclicAMI function
     void addConMatCell(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const labelList gRows,
         const label cellI,
         const word stateName,
@@ -177,7 +177,7 @@ protected:
 
     /// add val to gRow row in conMat, column indice are the neighbouring states (given by stateName) for a given cellI
     void addConMatNeighbourCells(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const label gRow,
         const label cellI,
         const word stateName,
@@ -185,15 +185,15 @@ protected:
 
     /// overload function for cyclicAMI function
     void addConMatNeighbourCells(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const labelList gRows,
         const label cellI,
         const word stateName,
-        const PetscScalar val);    
+        const PetscScalar val);
 
     /// add val to gRow row in conMat, column indice are the faces (given by stateName) for a given cellI
     void addConMatCellFaces(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const label gRow,
         const label cellI,
         const word stateName,
@@ -201,15 +201,15 @@ protected:
 
     /// overload function for cyclicAMI function
     void addConMatCellFaces(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const labelList gRows,
         const label cellI,
         const word stateName,
-        const PetscScalar val);    
+        const PetscScalar val);
 
     /// add the column index of the (iner-proc) connected states and faces to conMat, given a local face index
     void addBoundaryFaceConnections(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const label gRow,
         const label cellI,
         const labelList v,
@@ -218,12 +218,12 @@ protected:
 
     /// overload function for cyclicAMI and mixingPlane only used in setupStateBoundaryCon function
     void addBoundaryFaceConnections(
-        bufferConMap &conMat,
+        bufferConMap& conMat,
         const labelList gRows,
         const label cellI,
         const labelList v,
         const List<List<word>> connectedStates,
-        const label addFaces);   
+        const label addFaces);
 
     /// clear members in DAJacCon
     void clearDAJacConMembers()
@@ -231,7 +231,7 @@ protected:
         // Need to clean up all the matrices
         MatDestroy(&jacCon_);
         MatDestroy(&stateBoundaryCon_);
-        MatDestroy(&fieldStateBoundaryCon_);        
+        MatDestroy(&fieldStateBoundaryCon_);
         MatDestroy(&stateBoundaryConID_);
         MatDestroy(&fieldStateBoundaryConID_);
         VecDestroy(&jacConColors_);
@@ -266,7 +266,7 @@ protected:
         Vec preallocOffProc,
         Vec preallocOnProcT,
         Vec preallocOffProcT,
-        bufferConMap &connections,
+        bufferConMap& connections,
         const label row);
 
     /// compute preallocation vectors

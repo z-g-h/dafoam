@@ -210,19 +210,11 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
         // ******** phi Residuals **********
         // copied and modified from pEqn.H
         // TODO: the phiRes is not zero, need to fix
-        if (isPC && daOption_.getOption<label>("subsonicPCOption") == 2)
-        {
-            // ignore all the off-diagonal element to avoid poor convergence caused by small pivot
-            phiRes_ = phi_;
-        }
-        else
-        {
-            phiRes_ == phi_ - (phiHbyA + pEqn.flux());
-        }
+        phiRes_ == phi_ - (phiHbyA + pEqn.flux());
 
         normalizePhiResiduals(phiRes);
     }
-    
+
     tUEqn.clear();
 }
 
@@ -243,7 +235,7 @@ void DAResidualTurboFoam::updateIntermediateVariables()
     */
 
     this->updateThermoVars();
-    
+
     MRF_.correctBoundaryVelocity(U_);
 }
 

@@ -63,7 +63,7 @@ autoPtr<DALinearEqn> DALinearEqn::New(
 
     // child class found
     return autoPtr<DALinearEqn>(
-        cstrIter()(mesh, daOption,daIndex));
+        cstrIter()(mesh, daOption, daIndex));
 }
 
 label DALinearEqn::solveLinearEqn(
