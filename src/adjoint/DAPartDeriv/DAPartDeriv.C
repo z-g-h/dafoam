@@ -467,67 +467,6 @@ void DAPartDeriv::calcPartDerivMat(
     MatAssemblyBegin(jacMat, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(jacMat, MAT_FINAL_ASSEMBLY);
 
-    // we set d[phiRes]/d[phi] = I, this can avoid small pivot to imporve convergence performace
-    if (daOption_.getOption<label>("phiResOnePCOption"))
-    {
-        labelList adjStateID4GlobalAdjIdx;
-        adjStateID4GlobalAdjIdx.setSize(daIndex_.nGlobalAdjointStates);
-        daIndex_.calcAdjStateID4GlobalAdjIdx(adjStateID4GlobalAdjIdx);
-
-        const PetscInt* cols;
-        const PetscScalar* vals;
-        PetscInt nCols, colI;
-        std::unordered_map<PetscInt, std::unordered_map<PetscInt, PetscScalar>> dSurfaceStateBuffer;
-
-        forAll(stateInfo_["surfaceScalarStates"], idx)
-        {
-            const word surfaceStateName = stateInfo_["surfaceScalarStates"][idx];
-            label surfaceStateId = daIndex_.adjStateID[surfaceStateName];
-
-            /// make dphiRes/dphi = I
-            /// first buffer the dphiRes/dw
-            forAll(mesh_.faces(), faceI)
-            {
-                label glbIdx = daIndex_.getGlobalAdjointStateIndex(surfaceStateName, faceI);
-                MatGetRow(jacMat, glbIdx, &nCols, &cols, &vals);
-                for (PetscInt i = 0; i < nCols; i++)
-                {
-                    colI = cols[i];
-                    if (colI == glbIdx)
-                    {
-                        dSurfaceStateBuffer[glbIdx][colI] = 1.0;
-                    }
-                    else if (adjStateID4GlobalAdjIdx[colI] == surfaceStateId)
-                    {
-                        dSurfaceStateBuffer[glbIdx][colI] = 0.0;
-                    }
-                    else
-                    {
-                        dSurfaceStateBuffer[glbIdx][colI] = vals[i];
-                    }
-                }
-                MatRestoreRow(jacMat, glbIdx, &nCols, &cols, &vals);
-            }
-
-            adjStateID4GlobalAdjIdx.clear();
-
-            /// restore values
-            for (auto& rowEntry : dSurfaceStateBuffer)
-            {
-                PetscInt row = rowEntry.first;
-                for (auto& colEntry : rowEntry.second)
-                {
-                    PetscInt col = colEntry.first;
-                    PetscScalar val = colEntry.second;
-                    MatSetValue(jacMat, row, col, val, INSERT_VALUES);
-                }
-            }
-
-            MatAssemblyBegin(jacMat, MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(jacMat, MAT_FINAL_ASSEMBLY);
-        }
-    }
-
     if (daOption_.getOption<label>("debug"))
     {
         daIndex_.printMatChars(jacMat);

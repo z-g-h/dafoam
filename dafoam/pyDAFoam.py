@@ -359,9 +359,6 @@ class DAOPTION(object):
         ## This is used only for transonic solvers such as DARhoSimpleCFoam
         self.transonicPCOption = -1
 
-        ## Options to set PCJacobian d[phiRes]/d[phi] = I to avoid small pivot in jacobian of phiRes
-        self.phiResOnePCOption = False
-
         ## Options for unsteady adjoint. mode can be hybrid or timeAccurate
         ## Here nTimeInstances is the number of time instances and periodicity is the
         ## periodicity of flow oscillation (hybrid adjoint only)
@@ -1682,7 +1679,7 @@ class PYDAFOAM(object):
             bc["indicesRed"] = list(indices)
 
             # now check for walls
-            if bc["type"] == "wall" or bc["type"] == "slip" or bc["type"] == "cyclic":
+            if bc["type"] == "wall" or bc["type"] == "slip" or bc["type"] == "cyclic" or bc["type"] == "mixingPlane":
                 self.wallList.append(name)
 
         return

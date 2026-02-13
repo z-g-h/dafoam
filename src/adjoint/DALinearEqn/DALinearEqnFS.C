@@ -260,31 +260,28 @@ void DALinearEqnFS::createMLRKSP(
     for (PetscInt i = 0; i < nsub; i++)
     {
         PC subfieldpc;
-
-        // if state is surfaceState, we need to do nothing, this can save some memory
-        if (i == 0)
+        KSPSetType(subfieldksp[i], KSPPREONLY);
+        KSPGetPC(subfieldksp[i], &subfieldpc);
+        PCSetType(subfieldpc, PCASM);
+        PCSetUp(subfieldpc);
+        PCASMSetOverlap(subfieldpc, asmOverlap);
+        KSP* subfieldkspsubdomain;
+        PetscInt firstsub;
+        PetscInt ndomain;
+        PCASMGetSubKSP(subfieldpc, &ndomain, &firstsub, &subfieldkspsubdomain);
+        for (PetscInt j = 0; j < ndomain; j++)
         {
-            KSPSetType(subfieldksp[i], KSPPREONLY);
-            KSPGetPC(subfieldksp[i], &subfieldpc);
-            PCSetType(subfieldpc, PCNONE);
-        }
-        // if state is flow or model state, we use ASM(ILU)
-        else
-        {
-            KSPSetType(subfieldksp[i], KSPPREONLY);
-            KSPGetPC(subfieldksp[i], &subfieldpc);
-            PCSetType(subfieldpc, PCASM);
-            PCSetUp(subfieldpc);
-            PCASMSetOverlap(subfieldpc, asmOverlap);
-            KSP* subfieldkspsubdomain;
-            PetscInt firstsub;
-            PetscInt ndomain;
-            PCASMGetSubKSP(subfieldpc, &ndomain, &firstsub, &subfieldkspsubdomain);
-            for (PetscInt j = 0; j < ndomain; j++)
+            PC subfieldsubdomianpc;
+            KSPSetType(subfieldkspsubdomain[j], KSPPREONLY);
+            KSPGetPC(subfieldkspsubdomain[j], &subfieldsubdomianpc);
+            // if state is surfaceState, we need to do nothing, this can save some memory
+            if (i == 0)
             {
-                PC subfieldsubdomianpc;
-                KSPSetType(subfieldkspsubdomain[j], KSPPREONLY);
-                KSPGetPC(subfieldkspsubdomain[j], &subfieldsubdomianpc);
+                PCSetType(subfieldsubdomianpc, PCNONE);
+            }
+            // if state is flow or model state, we use ASM(ILU)
+            else
+            {
                 PCSetType(subfieldsubdomianpc, PCILU);
                 PCFactorSetPivotInBlocks(subfieldsubdomianpc, PETSC_TRUE);
                 PCFactorSetShiftType(subfieldsubdomianpc, MAT_SHIFT_NONZERO);
