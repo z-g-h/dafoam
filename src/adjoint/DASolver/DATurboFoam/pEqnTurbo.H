@@ -12,27 +12,39 @@ volScalarField AtU(AU);
 volVectorField HbyA("HbyA", U);
 HbyA = UEqn.H() / AU;
 
-volScalarField rAU(1.0 / UEqn.A());
-
 bool closedVolume = false;
+
+surfaceScalarField phiHbyA("phiHbyA", fvc::interpolate(rho) * fvc::flux(HbyA));
+
+MRF.makeRelative(fvc::interpolate(rho), phiHbyA);
 
 if (simple.transonic())
 {
 
     surfaceScalarField phid(
         "phid",
-        fvc::interpolate(psi) * fvc::flux(HbyA));
+        (fvc::interpolate(psi) / fvc::interpolate(rho)) * phiHbyA);
 
-    MRF.makeRelative(fvc::interpolate(psi), phid);
+    if (simple.consistent())
+    {
+        AtU -= UEqn.H1();
+        phiHbyA +=
+            fvc::interpolate(rho * (1.0 / AtU - 1.0 / AU)) * fvc::snGrad(p) * mesh.magSf()
+            - fvc::interpolate(psi * p) * phiHbyA / fvc::interpolate(rho);
 
-    AtU -= UEqn.H1();
-    HbyA -= (1.0 / AU - 1.0 / AtU) * fvc::grad(p);
+        HbyA -= (1.0 / AU - 1.0 / AtU) * fvc::grad(p);
+    }
+    else
+    {
+        phiHbyA -= fvc::interpolate(psi * p) * phiHbyA / fvc::interpolate(rho);
+    }
 
     while (simple.correctNonOrthogonal())
     {
         fvScalarMatrix pEqn(
-            fvm::div(phid, p)
-            - fvm::laplacian(rho * rAU, p));
+            fvc::div(phiHbyA)
+            + fvm::div(phid, p)
+            - fvm::laplacian(rho / AtU, p));
 
         // Relax the pressure equation to ensure diagonal-dominance
         pEqn.relax();
@@ -49,18 +61,12 @@ if (simple.transonic())
 
         if (simple.finalNonOrthogonalIter())
         {
-            phi == pEqn.flux();
+            phi == phiHbyA + pEqn.flux();
         }
     }
 }
 else
 {
-    surfaceScalarField phiHbyA(
-        "phiHbyA",
-        fvc::interpolate(rho) * fvc::flux(HbyA));
-
-    MRF.makeRelative(fvc::interpolate(rho), phiHbyA);
-
     closedVolume = adjustPhi(phiHbyA, U, p);
 
     if (simple.consistent())

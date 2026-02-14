@@ -85,10 +85,12 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
     word divUScheme = "div(phi,U)";
     word divHEScheme = "div(phi,e)";
     word divPhidPScheme = "div(phid,p)";
+    word divKScheme = "div(phi,Ekp)";
 
     if (he_.name() == "h")
     {
         divHEScheme = "div(phi,h)";
+        divKScheme = "div(phi,K)";
     }
 
     if (isPC)
@@ -96,6 +98,7 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
         divUScheme = "div(pc)";
         divHEScheme = "div(pc)";
         divPhidPScheme = "div(pc)";
+        divKScheme = "div(pc)";
     }
 
     // ******** U Residuals **********
@@ -120,8 +123,8 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
     fvScalarMatrix EEqn(
         fvm::div(phi_, he_, divHEScheme)
         + (he_.name() == "e"
-               ? fvc::div(phi_, volScalarField("Ekp", 0.5 * magSqr(U_) + p_ / rho_))
-               : fvc::div(phi_, volScalarField("K", 0.5 * magSqr(U_))))
+               ? fvc::div(phi_, volScalarField("Ekp", 0.5 * magSqr(U_) + p_ / rho_), divKScheme)
+               : fvc::div(phi_, volScalarField("K", 0.5 * magSqr(U_)), divKScheme))
         + fvc::div(MRF_.phi(), p_)
         - fvc::div(Teff.T() & U_)
         - fvm::laplacian(alphaEff, he_));
@@ -140,57 +143,70 @@ void DAResidualTurboFoam::calcResiduals(const dictionary& options)
 
     volScalarField rAU(1.0 / UEqn.A());
 
+    surfaceScalarField phiHbyA("phiHbyA", fvc::interpolate(rho_) * fvc::flux(HbyA));
+
+    MRF_.makeRelative(fvc::interpolate(rho_), phiHbyA);
+
     if (simple_.transonic())
     {
         surfaceScalarField phid(
             "phid",
-            fvc::interpolate(psi_) * fvc::flux(HbyA));
+            (fvc::interpolate(psi_) / fvc::interpolate(rho_)) * phiHbyA);
 
-        MRF_.makeRelative(fvc::interpolate(psi_), phid);
-
-        fvScalarMatrix pEqn(
-            fvm::div(phid, p_, divPhidPScheme)
-            - fvm::laplacian(rho_ * rAU, p_));
-
-        // for PC we do not include the div(phid, p) term, this improves the convergence
-        if (isPC && daOption_.getOption<label>("transonicPCOption") == 1)
+        if (simple_.consistent())
         {
-            pEqn -= fvm::div(phid, p_, divPhidPScheme);
-        }
+            AtU -= UEqn.H1();
+            phiHbyA +=
+                fvc::interpolate(rho_ * (1.0 / AtU - 1.0 / AU)) * fvc::snGrad(p_) * mesh_.magSf()
+                - fvc::interpolate(psi_ * p_) * phiHbyA / fvc::interpolate(rho_);
 
-        // Relax the pressure equation to maintain diagonal dominance
-        pEqn.relax();
-
-        pEqn.setReference(pressureControl_.refCell(), pressureControl_.refValue());
-
-        pRes_ = pEqn & p_;
-        normalizeResiduals(pRes);
-
-        // ******** phi Residuals **********
-        // copied and modified from pEqn.H
-        if (isPC && daOption_.getOption<label>("transonicPCOption") == 2)
-        {
-            // transonic PC option 2, we ignore all the off-diagonal
-            // terms for the phiRes
-            phiRes_ = phi_;
+            HbyA -= (1.0 / AU - 1.0 / AtU) * fvc::grad(p_);
         }
         else
         {
-            phiRes_ == phi_ - pEqn.flux();
+            phiHbyA -= fvc::interpolate(psi_ * p_) * phiHbyA / fvc::interpolate(rho_);
         }
 
-        // need to normalize phiRes
-        normalizePhiResiduals(phiRes);
+        while (simple_.correctNonOrthogonal())
+        {
+            fvScalarMatrix pEqn(
+                fvc::div(phiHbyA)
+                + fvm::div(phid, p_, divPhidPScheme)
+                - fvm::laplacian(rho_ / AtU, p_));
+
+            // for PC we do not include the div(phid, p) term, this improves the convergence
+            if (isPC && daOption_.getOption<label>("transonicPCOption") == 1)
+            {
+                pEqn -= fvm::div(phid, p_, divPhidPScheme);
+            }
+
+            // Relax the pressure equation to maintain diagonal dominance
+            pEqn.relax();
+
+            pEqn.setReference(pressureControl_.refCell(), pressureControl_.refValue());
+
+            pRes_ = pEqn & p_;
+            normalizeResiduals(pRes);
+
+            // ******** phi Residuals **********
+            // copied and modified from pEqn.H
+            if (isPC && daOption_.getOption<label>("transonicPCOption") == 2)
+            {
+                // transonic PC option 2, we ignore all the off-diagonal
+                // terms for the phiRes
+                phiRes_ = phi_;
+            }
+            else
+            {
+                phiRes_ == phi_ - (phiHbyA + pEqn.flux());
+            }
+
+            // need to normalize phiRes
+            normalizePhiResiduals(phiRes);
+        }
     }
     else
     {
-
-        surfaceScalarField phiHbyA(
-            "phiHbyA",
-            fvc::interpolate(rho_) * fvc::flux(HbyA));
-
-        MRF_.makeRelative(fvc::interpolate(rho_), phiHbyA);
-
         adjustPhi(phiHbyA, U_, p_);
         if (simple_.consistent())
         {
