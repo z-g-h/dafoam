@@ -512,7 +512,7 @@ class DAOPTION(object):
             "fpRelTol": 1e-6,
             "fpMinResTolDiff": 1.0e2,
             "fpPCUpwind": False,
-            "dynAdjustTol": False
+            "dynAdjustTol": False,
         }
 
         ## Normalization for residuals. We should normalize all residuals!
@@ -1571,6 +1571,54 @@ class PYDAFOAM(object):
                 xs[counter, :] = self.xv[ptInd]
                 counter += 1
 
+        return xs
+
+    def getSurfaceIntersectionCoordinates(self, groupName=None):
+        """
+        return the intersection coordinates for design surface to buffer the points near other wall
+
+        Parameters
+        ----------
+        groupName : str
+            Group identifier to get only coordinates cooresponding to
+            the desired group. The group must be a family or a
+            user-supplied group of families. The default is None which
+            corresponds to all wall-type surfaces.
+
+        Output
+        ------
+        xs: numpy array of size nPoints * 3 for intersection surface points
+        """
+
+        if groupName is None:
+            raise Error("groupName can not be None")
+
+        # get intersection points indices
+        intersectionInd = np.array([], dtype=int)
+        famInd = self.families[groupName]
+        for Ind in famInd:
+            designName = self.basicFamilies[Ind]
+            designBc = self.boundaries[designName]
+            designBcInd = np.array(designBc["indicesRed"], dtype=int)
+            for allInd in self.families[self.allWallsGroup]:
+                name = self.basicFamilies[allInd]
+                # must exclude the current design BC
+                if (name != designName):
+                    bc = self.boundaries[name]
+                    currentInd = np.array(bc["indicesRed"], dtype=int)
+                    currentInter = np.intersect1d(designBcInd, currentInd)
+                    if len(currentInter) > 0:
+                        intersectionInd = np.concatenate([intersectionInd, currentInter])
+
+        intersectionInd = np.unique(intersectionInd)
+
+        # from points indices to points coordinates
+        npts = intersectionInd.shape[0]
+        xs = np.zeros((npts, 3), self.dtype)
+        counter = 0
+        for ptInd in intersectionInd:
+            xs[counter, :] = self.xv[ptInd]
+            counter += 1
         return xs
 
     def _getSurfaceSize(self, groupName):
