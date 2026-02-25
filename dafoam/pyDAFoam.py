@@ -1573,9 +1573,9 @@ class PYDAFOAM(object):
 
         return xs
 
-    def getSurfaceIntersectionCoordinates(self, groupName=None):
+    def getBufferSurfaceCoordinates(self, groupName=None):
         """
-        return the intersection coordinates for design surface to buffer the points near other wall
+        return the exclude coordinates for design surface to buffer the points near other wall
 
         Parameters
         ----------
@@ -1593,30 +1593,26 @@ class PYDAFOAM(object):
         if groupName is None:
             raise Error("groupName can not be None")
 
-        # get intersection points indices
-        intersectionInd = np.array([], dtype=int)
         famInd = self.families[groupName]
-        for Ind in famInd:
-            designName = self.basicFamilies[Ind]
-            designBc = self.boundaries[designName]
-            designBcInd = np.array(designBc["indicesRed"], dtype=int)
-            for allInd in self.families[self.allWallsGroup]:
-                name = self.basicFamilies[allInd]
-                # must exclude the current design BC
-                if (name != designName):
-                    bc = self.boundaries[name]
-                    currentInd = np.array(bc["indicesRed"], dtype=int)
-                    currentInter = np.intersect1d(designBcInd, currentInd)
-                    if len(currentInter) > 0:
-                        intersectionInd = np.concatenate([intersectionInd, currentInter])
+        allGroupInd = self.families[self.allWallsGroup]
+        # Exclude design group
+        substractIndices = list(set(allGroupInd) - set(famInd))
+        excludeInd = sorted(np.unique(substractIndices))
 
-        intersectionInd = np.unique(intersectionInd)
+        ptsIndices = np.array([], dtype=int)
+        for Ind in excludeInd:
+            name = self.basicFamilies[Ind]
+            bc = self.boundaries[name]
+            currentIndices = np.array(bc["indicesRed"], dtype=int)
+            ptsIndices = np.concatenate([ptsIndices, currentIndices])
+        
+        ptsIndices = np.unique(ptsIndices)
 
         # from points indices to points coordinates
-        npts = intersectionInd.shape[0]
+        npts = ptsIndices.shape[0]
         xs = np.zeros((npts, 3), self.dtype)
         counter = 0
-        for ptInd in intersectionInd:
+        for ptInd in ptsIndices:
             xs[counter, :] = self.xv[ptInd]
             counter += 1
         return xs

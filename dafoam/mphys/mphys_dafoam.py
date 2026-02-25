@@ -648,8 +648,8 @@ class DAFoamMesh(ExplicitComponent):
     def mphys_get_surface_mesh(self):
         return self.x_a0
     
-    def mphys_get_surface_mesh_Intersection(self):
-        return self.DASolver.getSurfaceIntersectionCoordinates(self.DASolver.designSurfacesGroup).flatten(order="C")
+    def mphys_get_bufferSurface_mesh(self):
+        return self.DASolver.getBufferSurfaceCoordinates(self.DASolver.designSurfacesGroup).flatten(order="C")
 
     def mphys_get_triangulated_surface(self, groupName=None):
         # this is a list of lists of 3 points
