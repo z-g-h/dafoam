@@ -39,6 +39,10 @@ DAFunctionEntropyGeneration::DAFunctionEntropyGeneration(
         // read reference temperature and pressure
         functionDict_.readEntry<scalar>("referencePressure", PRef_);
         functionDict_.readEntry<scalar>("referenceTemperature", TRef_);
+
+        // read calcMode to whether use massflow average
+        calcMode_ = functionDict_.lookupOrDefault<bool>("byUnitMass", false);
+
     }
     // read entropy transfers options
     if (functionDict_.found("heatExchangePatches"))
@@ -111,6 +115,8 @@ scalar DAFunctionEntropyGeneration::calcFunction()
     scalar entropyFlowOutlet = 0.0;
     scalar totalEntropyChanges = 0;
     scalar totalEntropyTransfers = 0;
+    scalar massflowInlet = 0.0;
+    scalar massflowOutlet = 0.0;
 
     forAll(faceSources_, idxI)
     {
@@ -142,14 +148,16 @@ scalar DAFunctionEntropyGeneration::calcFunction()
             // calculate entropy by massflowRate * specificEntropy
             scalar entropyFlow = mfr * specificEntropy;
 
-            // sum the entropy
+            // sum the entropy and massflow
             if (inletPatches_.found(patchName))
             {
                 entropyFlowInlet += entropyFlow;
+                massflowInlet += mfr;
             }
             else if (outletPatches_.found(patchName))
             {
                 entropyFlowOutlet += entropyFlow;
+                massflowOutlet += mfr;
             }
         }
         if (heatExchangePatches_.found(patchName))
@@ -172,10 +180,27 @@ scalar DAFunctionEntropyGeneration::calcFunction()
     reduce(entropyFlowInlet, sumOp<scalar>());
     reduce(entropyFlowOutlet, sumOp<scalar>());
     reduce(totalEntropyTransfers, sumOp<scalar>());
+    reduce(massflowInlet, sumOp<scalar>());
+    reduce(massflowOutlet, sumOp<scalar>());
 
     // calculate entropy generation by entropy balance equation
     totalEntropyChanges = entropyFlowOutlet + entropyFlowInlet;
-    functionValue = (totalEntropyChanges - totalEntropyTransfers) * scale_;
+    functionValue = (totalEntropyChanges - totalEntropyTransfers);
+
+    if (calcMode_)
+    {   
+        // entropy transfer average totoal entropy generation
+        if (functionDict_.found("heatExchangePatches"))
+        {
+            functionValue /= (mag(massflowInlet) + mag(massflowOutlet)) /2.0;
+        }
+        else
+        {
+            functionValue = entropyFlowInlet / mag(massflowInlet) + entropyFlowOutlet / mag(massflowOutlet);
+        }
+    }
+    
+    functionValue *= scale_;
 
     // check if we need to calculate refDiff.
     this->calcRefVar(functionValue);

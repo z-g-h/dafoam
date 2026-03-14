@@ -1594,28 +1594,46 @@ class PYDAFOAM(object):
             raise Error("groupName can not be None")
 
         famInd = self.families[groupName]
-        allGroupInd = self.families[self.allWallsGroup]
+        # regroup wall boundary, self.wallList have some boundary that are
+        # not wall but we don't want to deform
+        allWallInd = []
+        for name in self.basicFamilies:
+            bc = self.boundaries[name]
+            if bc["type"] == "wall":
+                allWallInd.extend(self.families[name])
+
+        allWallInd = sorted(np.unique(allWallInd))
+
         # Exclude design group
-        substractIndices = list(set(allGroupInd) - set(famInd))
+        substractIndices = list(set(allWallInd) - set(famInd))
         excludeInd = sorted(np.unique(substractIndices))
 
-        ptsIndices = np.array([], dtype=int)
+        ptsIndices = []
         for Ind in excludeInd:
             name = self.basicFamilies[Ind]
             bc = self.boundaries[name]
-            currentIndices = np.array(bc["indicesRed"], dtype=int)
-            ptsIndices = np.concatenate([ptsIndices, currentIndices])
-        
-        ptsIndices = np.unique(ptsIndices)
+            ptsIndices.extend(bc["indicesRed"])
 
-        # from points indices to points coordinates
-        npts = ptsIndices.shape[0]
-        xs = np.zeros((npts, 3), self.dtype)
-        counter = 0
-        for ptInd in ptsIndices:
-            xs[counter, :] = self.xv[ptInd]
-            counter += 1
-        return xs
+        # get local coordiantes
+        if len(ptsIndices) > 0:
+            ptsIndices = np.unique(ptsIndices)
+            xsLocal = self.xv[ptsIndices].astype(self.dtype)
+        else:
+            xsLocal = np.zeros((0, 3), dtype=self.dtype)
+
+        # gather to global xs
+        allXs = self.comm.gather(xsLocal, root=0)
+
+        xsGlobal = None
+        if self.comm.rank == 0:
+            # merge all array
+            xsGlobal = np.vstack(allXs)
+            xsGlobal = np.unique(xsGlobal, axis=0)
+
+        # bcast to all processor
+        xsGlobal = self.comm.bcast(xsGlobal, root=0)
+
+        return xsGlobal
 
     def _getSurfaceSize(self, groupName):
         """
@@ -1724,6 +1742,10 @@ class PYDAFOAM(object):
 
             # now check for walls
             if bc["type"] == "wall" or bc["type"] == "slip" or bc["type"] == "cyclic" or bc["type"] == "mixingPlane":
+                self.wallList.append(name)
+
+            # add cyclicAMI to walls, becasuse after adjFieldCouplingColoring, cyclicAMI should not deform
+            if bc["type"] == "cyclicAMI" and self.getOption("adjFieldCouplingColoring"):
                 self.wallList.append(name)
 
         return

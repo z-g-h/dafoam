@@ -12,10 +12,11 @@
                             "source": "patchToFace",
                             "patches": ["inlet", "outlet", "wall"],
         entropyChanges
-        options        |    "inletPatches": ["inlet"],
+        options     |    "inletPatches": ["inlet"],
                     |    "outletPatches":["outlet"],
                     |    "referencePressure": 1e5,
                     |    "referenceTemperature": 300,
+                    |    "byUnitMass" : True,
         entropyTransfers
         options        |    "heatExchangePatches": ["wall"],
 
@@ -62,7 +63,9 @@ protected:
     scalar PRef_;
     scalar TRef_;
 
-    /// total
+    /// if calculating entropyGeneration per unit mass or total, which mode to use
+    bool calcMode_;
+
 
 public:
     TypeName("entropyGeneration");
