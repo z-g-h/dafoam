@@ -96,6 +96,8 @@ label DAHeatTransferFoam::solvePrimal()
         SolverPerformance<scalar> solverT = TEqn.solve();
         DAUtility::primalResidualControl(solverT, printToScreen_, "T", daGlobalVarPtr_->primalMaxRes);
 
+        setupDynAdjustPrimalResidual(solverT, runTime, "T");
+
         /// update k
         this->correctKappa();
 

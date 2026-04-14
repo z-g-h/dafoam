@@ -28,6 +28,8 @@ if (simple.momentumPredictor())
 
     DAUtility::primalResidualControl(solverU, printToScreen_, "U", daGlobalVarPtr_->primalMaxRes);
 
+    setupDynAdjustPrimalResidual(solverU, runTime, "U");
+
     fvOptions.correct(U);
 }
 

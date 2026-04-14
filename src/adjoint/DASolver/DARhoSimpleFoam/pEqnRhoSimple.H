@@ -49,6 +49,8 @@ while (simple.correctNonOrthogonal())
 
     DAUtility::primalResidualControl(solverP, printToScreen_, "p", daGlobalVarPtr_->primalMaxRes);
 
+    setupDynAdjustPrimalResidual(solverP, runTime, "p");
+
     if (simple.finalNonOrthogonalIter())
     {
         phi = phiHbyA + pEqn.flux();

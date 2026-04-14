@@ -146,6 +146,9 @@ protected:
     /// primal residual tolerance
     scalar primalMinResTol_ = 0.0;
 
+    /// primal initial residual tolerance. this will be used when primalMinResOption.dynAdjustTol is activate
+    scalar dynPrimalMinResTol_ = 0.0;
+
     /// whether to print primal information to the screen
     label printToScreen_ = 0;
 
@@ -427,6 +430,18 @@ public:
 
     /// return whether to loop the primal solution, similar to runTime::loop() except we don't do file IO
     label loop(Time& runTime);
+
+    /// control to get the initial residual when dynAdjustTol is activated
+    void setupDynAdjustPrimalResidual(
+        const SolverPerformance<scalar>& solverP,
+        const Time & runTime,
+        const word varName);
+
+    /// control to get the initial residual when dynAdjustTol is activated
+    void setupDynAdjustPrimalResidual(
+        const SolverPerformance<vector>& solverP,
+        const Time & runTime,
+        const word varName);
 
     /// assign the inputFieldUnsteady values to the OF field vars
     void updateInputFieldUnsteady();

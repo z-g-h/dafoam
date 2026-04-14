@@ -19,6 +19,8 @@
 
     DAUtility::primalResidualControl(solverE, printToScreen_, "he", daGlobalVarPtr_->primalMaxRes);
 
+    setupDynAdjustPrimalResidual(solverE, runTime, "he");
+
     // bound he
     DAUtility::boundVar(allOptions, he, printToScreen_);
 

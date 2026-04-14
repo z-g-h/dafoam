@@ -74,6 +74,17 @@ class DAOPTION(object):
         ## of magnitude (default) higher than this tolerance, the primal solution will return fail=True
         self.primalMinResTol = 1.0e-8
 
+        ## this options is used when multidiscipline coupling, we give a rel tol to accelerate convergence.
+        ## for primal solver, we need to choose a state var such as "he" or "p" to as residual monitor.
+        ## we rarely use turbulence state as monitorState, so don't use them.
+        self.primalMinResOption = {
+            "dynAdjustTol": False, 
+            "primalMinResStartRelTol" : 1e-16,
+            "monitorState" : "he",
+            "criticalResTol" : 1e-3,
+            "primalMinResRelTol" : 0.9
+        }
+
         ## The boundary condition for primal solution. The keys should include "variable", "patch",
         ## and "value". For turbulence variable, one can also set "useWallFunction" [bool].
         ## Note that setting "primalBC" will overwrite any values defined in the "0" folder.

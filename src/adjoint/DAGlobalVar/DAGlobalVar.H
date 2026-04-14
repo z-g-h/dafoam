@@ -61,6 +61,9 @@ public:
     /// the maximal residual for primal   this var will be used in multiple classes
     scalar primalMaxRes = 0.0;
 
+    /// the dynPrimalRes for multidiscipline coupling, initial a large number.
+    scalar dynPrimalRes = 9999.0;
+
     /// the list of parameters for all the actuator disks
     HashTable<List<scalar>> actuatorDiskPars;
 

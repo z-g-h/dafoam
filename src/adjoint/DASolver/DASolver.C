@@ -93,6 +93,8 @@ DASolver::DASolver(
     printInterval_ = daOptionPtr_->getOption<label>("printInterval");
     printIntervalUnsteady_ = daOptionPtr_->getOption<label>("printIntervalUnsteady");
 
+    dynPrimalMinResTol_ = 0.0;
+
     // if inputInto has unsteadyField, we need to initial GlobalVar::inputFieldUnsteady here
     this->initInputFieldUnsteady();
 
@@ -183,6 +185,21 @@ label DASolver::loop(Time& runTime)
         primalFinalTimeIndex_ = runTime.timeIndex();
         return 0;
     }
+    else if (daGlobalVarPtr_->dynPrimalRes < dynPrimalMinResTol_ && runTime.timeIndex() > primalMinIters_)
+    {
+        Info << "Time = " << t << endl;
+
+        Info << "DynAdjust residual " << daGlobalVarPtr_->dynPrimalRes << " satisfied the prescribed tolerance " << dynPrimalMinResTol_ << endl
+             << endl;
+
+        this->calcAllFunctions(1);
+        runTime.writeNow();
+        prevPrimalSolTime_ = t;
+        funcObj.end();
+        daRegressionPtr_->writeFeatures();
+        primalFinalTimeIndex_ = runTime.timeIndex();
+        return 0;        
+    }
     else if (t > endTime - 0.5 * deltaT)
     {
         prevPrimalSolTime_ = t;
@@ -198,6 +215,108 @@ label DASolver::loop(Time& runTime)
         daGlobalVarPtr_->primalMaxRes = -1e10;
         printToScreen_ = this->isPrintTime(runTime, printInterval_);
         return 1;
+    }
+}
+
+void DASolver::setupDynAdjustPrimalResidual(
+    const SolverPerformance<scalar>& solverP,
+    const Time& runTime,
+    const word varName)
+{
+    /*
+    Description:
+        Setup maximal residual control and print the residual as needed
+    */
+
+    // calculate the initial residual mag and set it to primalResidualNorms_
+
+    dictionary primalResSubDict = daOptionPtr_->getAllOptions().subDict("primalMinResOption");
+    if (primalResSubDict.getBool("dynAdjustTol"))
+    {
+
+        if (primalResSubDict.getWord("monitorState") == varName)
+        {
+            scalar initRes = solverP.initialResidual();
+
+            // if current timeIndex is 1, we record initResidual
+            if (runTime.timeIndex() == runTime.startTimeIndex() + 1)
+            {
+                if (initRes > primalResSubDict.getScalar("criticalResTol"))
+                {
+                    this->dynPrimalMinResTol_ = initRes * primalResSubDict.getScalar("primalMinResStartRelTol");
+                    if (daOptionPtr_->getOption<bool>("debug") == true)
+                    {
+                        Info << "use state " << varName << " as monitorState "
+                            << " dynInitPrimalRes: " << initRes << endl;
+                    }
+                }
+                else
+                {
+                    this->dynPrimalMinResTol_ = initRes * primalResSubDict.getScalar("primalMinResRelTol");
+                    if (daOptionPtr_->getOption<bool>("debug") == true)
+                    {
+                        Info << "use state " << varName << " as monitorState "
+                            << " dynInitPrimalRes: " << initRes << endl;
+                    }                    
+                }
+
+            }
+            else if (runTime.timeIndex() > runTime.startTimeIndex() +1)
+            {
+                daGlobalVarPtr_->dynPrimalRes = initRes;
+            }
+        }
+    }
+}
+
+void DASolver::setupDynAdjustPrimalResidual(
+    const SolverPerformance<vector>& solverP,
+    const Time& runTime,
+    const word varName)
+{
+    /*
+    Description:
+        Setup maximal residual control and print the residual as needed
+    */
+
+    // calculate the initial residual mag and set it to primalResidualNorms_
+
+    dictionary primalResSubDict = daOptionPtr_->getAllOptions().subDict("primalMinResOption");
+    if (primalResSubDict.getBool("dynAdjustTol"))
+    {
+        if (primalResSubDict.getWord("monitorState") == varName)
+        {
+            vector initRes = solverP.initialResidual();
+            scalarList initResList = {initRes[0], initRes[1], initRes[2]};
+            sort(initResList);
+
+            // if current timeIndex is 1, we record initResidual
+            if (runTime.timeIndex() == runTime.startTimeIndex() + 1)
+            {
+                if (initResList[1] > primalResSubDict.getScalar("criticalResTol"))
+                {
+                    this->dynPrimalMinResTol_ = initResList[1] * primalResSubDict.getScalar("primalMinResStartRelTol");
+                    if (daOptionPtr_->getOption<bool>("debug") == true)
+                    {
+                        Info << "use state " << varName << " as monitorState "
+                            << " dynInitPrimalRes: " << initResList[1] << endl;
+                    }
+                }
+                else
+                {
+                    this->dynPrimalMinResTol_ = initResList[1] * primalResSubDict.getScalar("primalMinResRelTol");
+                    if (daOptionPtr_->getOption<bool>("debug") == true)
+                    {
+                        Info << "use state " << varName << " as monitorState "
+                            << " dynInitPrimalRes: " << initResList[1] << endl;
+                    }                    
+                }
+            }
+            else if (runTime.timeIndex() > runTime.startTimeIndex() + 1)
+            {
+                daGlobalVarPtr_->dynPrimalRes = initResList[1];
+            }
+        }
     }
 }
 

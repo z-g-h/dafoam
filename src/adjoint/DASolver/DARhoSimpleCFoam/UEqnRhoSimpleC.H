@@ -13,5 +13,7 @@ SolverPerformance<vector> solverU = solve(UEqn == -fvc::grad(p));
 
 DAUtility::primalResidualControl(solverU, printToScreen_, "U", daGlobalVarPtr_->primalMaxRes);
 
+setupDynAdjustPrimalResidual(solverU, runTime, "U");
+
 // bound U
 DAUtility::boundVar(allOptions, U, printToScreen_);

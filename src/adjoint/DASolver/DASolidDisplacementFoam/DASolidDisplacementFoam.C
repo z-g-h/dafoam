@@ -103,6 +103,8 @@ label DASolidDisplacementFoam::solvePrimal()
 
         DAUtility::primalResidualControl(solverD, printToScreen_, "D", daGlobalVarPtr_->primalMaxRes);
 
+        setupDynAdjustPrimalResidual(solverD, runTime, "D");
+
         // calculate all functions
         this->calcAllFunctions(printToScreen_);
         // print run time
