@@ -157,12 +157,6 @@ public:
         DASolverPtr_->calcdRdWT(isPC, dRdWT);
     }
 
-    /// compute dRdWT use AD
-    void calcdRdWTAD(Mat dRdWT)
-    {
-        DASolverPtr_->calcdRdWTAD(dRdWT);
-    }
-
     /// Update the preconditioner matrix for the ksp object
     void updateKSPPCMat(
         Mat PCMat,
@@ -358,7 +352,7 @@ public:
     {
         return DASolverPtr_->getModelStateSize();
     }
-    
+
     /// return the number of global cells
     label getNGlobalCells() const
     {

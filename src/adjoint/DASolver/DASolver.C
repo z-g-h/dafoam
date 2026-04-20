@@ -339,6 +339,8 @@ void DASolver::setupDynAdjustPrimalResidual(
             }
         }
     }
+}
+
 void DASolver::calcFuncStd()
 {
     /*
