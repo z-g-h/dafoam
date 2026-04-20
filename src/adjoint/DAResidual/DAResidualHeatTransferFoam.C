@@ -117,7 +117,7 @@ void DAResidualHeatTransferFoam::updateIntermediateVariables()
             kappa_[cellI] += kappaCoeffs_[order] * pow(T_[cellI], order);
         }
     }
-    /// update boundary
+    // update boundary
     forAll(kappa_.boundaryField(), patchI)
     {
         forAll(kappa_.boundaryField()[patchI], faceI)

@@ -194,16 +194,12 @@ void DAResidualRhoSimpleCFoam::updateIntermediateVariables()
     /* 
     Description:
         Update the intermediate variables that depend on the state variables
-
-        ********************** NOTE *****************
-        we assume hePsiThermo, pureMixture, perfectGas, hConst, and const transport
-        TODO: need to do this using built-in openfoam functions.
-    
         we need to:
-        1, update psi based on T, , rho, he, and optionally mu and alpha by calling updateThermoVars
+        1, update psi, rho, he, and optionally mu and alpha by calling updateThermoVars
         2, update velocity boundary based on MRF
         3, update fvOptions
     */
+
     this->updateThermoVars();
 }
 

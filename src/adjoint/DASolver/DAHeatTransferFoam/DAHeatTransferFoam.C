@@ -130,7 +130,7 @@ void DAHeatTransferFoam::correctKappa()
             kappa[cellI] += kappaCoeffs[order] * pow(T[cellI], order);
         }
     }
-    /// update boundary
+    // update boundary
     forAll(kappa.boundaryField(), patchI)
     {
         forAll(kappa.boundaryField()[patchI], faceI)

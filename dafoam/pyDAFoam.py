@@ -11,7 +11,7 @@ solvers and external modules for design optimization
 
 """
 
-__version__ = "4.0.2"
+__version__ = "4.0.3"
 
 import subprocess
 import os
@@ -29,6 +29,11 @@ try:
     import tensorflow as tf
 except ImportError:
     pass
+
+import openmdao.api as om
+from smt.applications import EGO
+from smt.design_space import DesignSpace
+from smt.surrogate_models import KRG, KPLS, KPLSK, GEKPLS, MGP, GPX
 
 
 class DAOPTION(object):
@@ -70,7 +75,7 @@ class DAOPTION(object):
         ## - DASolidDisplacementFoam: Steady-state structural solver for linear elastic equations
         self.solverName = "DASimpleFoam"
 
-        ## The convergence tolerance for the primal solver. If the primal can not converge to 2 orders
+        ## The convergence residual tolerance for the primal solver. If the primal can not converge to 2 orders
         ## of magnitude (default) higher than this tolerance, the primal solution will return fail=True
         self.primalMinResTol = 1.0e-8
 
@@ -84,6 +89,12 @@ class DAOPTION(object):
             "criticalResTol" : 1e-3,
             "primalMinResRelTol" : 0.9
         }
+        ## The convergence function std oscillation tolerance for the primal solver.
+        ## tol: the tolerance of the function oscillation standard deviation, -1 means it is deactivated
+        ## funcName: which function to use to calculate the std.
+        ## nSteps: how many (latest) function samples/steps to use for calculating the std, here
+        ##          100 means we always use the last 100 step's function values to compute the std
+        self.primalFuncStdTol = {"tol": -1.0, "funcName": "CD", "nSteps": 100}
 
         ## The boundary condition for primal solution. The keys should include "variable", "patch",
         ## and "value". For turbulence variable, one can also set "useWallFunction" [bool].
@@ -97,6 +108,16 @@ class DAOPTION(object):
         ##        "useWallFunction": True,
         ##    },
         self.primalBC = {}
+
+        ## A general function to read the initial values from DAOption, and set
+        ## the corresponding values to the initial field.
+        ## Example
+        ## "primalInitCondition":
+        ## {
+        ##     "U": [10.0, 0.0, 0.0],
+        ##     "p": 101325.0
+        ## }
+        self.primalInitCondition = {}
 
         ## State normalization for dRdWT computation. Typically, we set far field value for each state
         ## variable. NOTE: If you forget to set normalization value for a state variable, the adjoint
@@ -318,6 +339,8 @@ class DAOPTION(object):
             "center": [0.25, 0.0, 0.0],
             "axis": "z",
             "omega": 0.1,
+            "s": 2.0,
+            "t0": 0.35,
         }
 
         ## The variable upper and lower bounds for primal solution. The key is variable+"Max/Min".
@@ -379,6 +402,7 @@ class DAOPTION(object):
             "PCMatUpdateInterval": 1,
             "reduceIO": True,
             "additionalOutput": ["None"],
+            "additionalOldTime": ["None"],
             "readZeroFields": True,
         }
 
@@ -405,6 +429,14 @@ class DAOPTION(object):
         ## the constrainHbyA, e.g., the MRF cases with the SST model. Here we have an option to add the
         ## constrainHbyA back to the primal and adjoint solvers.
         self.useConstrainHbyA = True
+
+        ## force to use meshWaveFrozen in fvSchemes->wallDist->method, regardless what is actually
+        ## set in fvSchemes. meshWaveFrozen improves the parallel adjoint accuracy.
+        self.forceMeshWaveFrozen = True
+
+        ## whether to use the ddtCorr term for unsteady solvers. We notice that adding this term
+        ## will degrade the adjoint accuracy, so it is set to false by default.
+        self.useDdtCorr = False
 
         ## parameters for regression models
         ## we support defining multiple regression models. Each regression model can have only one output
@@ -524,6 +556,9 @@ class DAOPTION(object):
             "fpMinResTolDiff": 1.0e2,
             "fpPCUpwind": False,
             "dynAdjustTol": False,
+            "KSPCalcEigen": 0,
+            "KSPCalcSingularVal": 0,
+            "readPCMat": 0,
         }
 
         ## Normalization for residuals. We should normalize all residuals!
@@ -538,6 +573,7 @@ class DAOPTION(object):
             "kRes",
             "omegaRes",
             "epsilonRes",
+            "alpha.waterRes",
         ]
 
         ## The maximal connectivity level for the dRdWTPC matrix. Reducing the connectivity level
@@ -556,6 +592,7 @@ class DAOPTION(object):
             "DRes": 2,
             "gammaIntRes": 2,
             "ReThetatRes": 2,
+            "alpha.waterRes": 2,
         }
 
         ## The min bound for Jacobians, any value that is smaller than the bound will be set to 0
@@ -574,7 +611,7 @@ class DAOPTION(object):
         self.decomposeParDict = {
             "method": "scotch",
             "simpleCoeffs": {"n": [2, 2, 1], "delta": 0.001},
-            "kahipCoeffs": {"config": "strong", "imbalance": 0.01},
+            "kahipCoeffs": {"config": "fast", "imbalance": 0.01},
             "preservePatches": ["None"],
             "singleProcessorFaceSets": ["None"],
             "args": ["None"],
@@ -591,13 +628,6 @@ class DAOPTION(object):
             "maxSkewness": 4.0,
             "maxIncorrectlyOrientedFaces": 0,
         }
-
-        ## The sensitivity map will be saved to disk during optimization for the given design variable
-        ## names in the list. Currently only support design variable type FFD and Field
-        ## NOTE: this function only supports useAD->mode:reverse
-        ## Example:
-        ##     "writeSensMap" : ["shapex", "shapey"]
-        self.writeSensMap = ["NONE"]
 
         ## Whether to write deformed FFDs to the disk during optimization, i.e., DVGeo.writeTecplot
         self.writeDeformedFFDs = False
@@ -703,7 +733,8 @@ class PYDAFOAM(object):
         self.solverInitialized = 0
         self._initSolver()
 
-        # set the primal boundary condition after initializing the solver
+        # set the primal initial and boundary condition after initializing the solver
+        self.setPrimalInitialConditions()
         self.setPrimalBoundaryConditions()
 
         # initialize the number of primal and adjoint calls
@@ -775,9 +806,9 @@ class PYDAFOAM(object):
         """
 
         self.solverRegistry = {
-            "Incompressible": ["DASimpleFoam", "DAPimpleFoam", "DAPimpleDyMFoam"],
-            "Compressible": ["DARhoSimpleFoam", "DARhoSimpleCFoam", "DATurboFoam", "DARhoPimpleFoam"],
-            "Solid": ["DASolidDisplacementFoam", "DAHeatTransferFoam"],
+            "Incompressible": ["DASimpleFoam", "DAPimpleFoam", "DAPimpleDyMFoam", "DAInterFoam", "DATopoChtFoam"],
+            "Compressible": ["DARhoSimpleFoam", "DARhoSimpleCFoam", "DATurboFoam", "DARhoPimpleFoam", "DAHisaFoam"],
+            "Solid": ["DASolidDisplacementFoam", "DAHeatTransferFoam", "DAScalarTransportFoam"],
         }
 
     def __call__(self):
@@ -834,10 +865,6 @@ class PYDAFOAM(object):
 
         if not self.getOption("useAD")["mode"] in ["reverse", "forward"]:
             raise Error("useAD->mode only supports reverse, or forward!")
-
-        if "NONE" not in self.getOption("writeSensMap"):
-            if not self.getOption("useAD")["mode"] in ["reverse"]:
-                raise Error("writeSensMap is only compatible with useAD->mode=reverse")
 
         if self.getOption("adjEqnSolMethod") == "fixedPoint":
             # for the fixed-point adjoint, we should not normalize the states and residuals
@@ -1219,6 +1246,40 @@ class PYDAFOAM(object):
             for i in range(1, endTimeIndex + 1):
                 t = i * deltaT
                 dTheta = omega * deltaT
+                dCosTheta = np.cos(dTheta)
+                dSinTheta = np.sin(dTheta)
+
+                for pointI in range(nLocalPoints):
+
+                    if axis == "z":
+                        xTemp = points[pointI][0] - center[0]
+                        yTemp = points[pointI][1] - center[1]
+
+                        points[pointI][0] = dCosTheta * xTemp - dSinTheta * yTemp + center[0]
+                        points[pointI][1] = dSinTheta * xTemp + dCosTheta * yTemp + center[1]
+                    else:
+                        raise Error("axis not valid! Options are: z")
+
+                pointsWrite = points.flatten()
+                self.solver.writeMeshPoints(pointsWrite, t)
+        elif mode == "rotation_ramp":
+            center = self.getOption("dynamicMesh")["center"]
+            axis = self.getOption("dynamicMesh")["axis"]
+            omega = self.getOption("dynamicMesh")["omega"]
+            s = self.getOption("dynamicMesh")["s"]
+            t0 = self.getOption("dynamicMesh")["t0"]
+
+            # always get the initial mesh from OF layer
+            points0 = np.zeros(nLocalPoints * 3)
+            self.solver.getOFMeshPoints(points0)
+            # NOTE: we also write the mesh point for t = 0
+            self.solver.writeMeshPoints(points0, 0.0)
+
+            # do a for loop to incrementally deform the mesh by a deltaT
+            points = np.reshape(points0, (-1, 3))
+            for i in range(1, endTimeIndex + 1):
+                t = i * deltaT
+                dTheta = omega * (np.tanh(s * ((2 * t / t0) - 1)) + np.tanh(s)) / (1 + np.tanh(s)) * deltaT
                 dCosTheta = np.cos(dTheta)
                 dSinTheta = np.sin(dTheta)
 
@@ -1680,6 +1741,15 @@ class PYDAFOAM(object):
         """
         self.solver.setPrimalBoundaryConditions(printInfo)
         self.solverAD.setPrimalBoundaryConditions(printInfoAD)
+
+    def setPrimalInitialConditions(self, printInfo=1, printInfoAD=0):
+        """
+        Assign the initial condition defined in primalInitCondition to the OF fields
+        """
+        self.solver.setPrimalInitialConditions(printInfo)
+        self.solver.getInitStateVals(printInfo)
+        self.solverAD.setPrimalInitialConditions(printInfoAD)
+        self.solverAD.getInitStateVals(printInfoAD)
 
     def _computeBasicFamilyInfo(self):
         """
@@ -2158,6 +2228,17 @@ class PYDAFOAM(object):
 
         return
 
+    def getResiduals(self):
+        """
+        Return the residual array owns by this processor
+        """
+        nLocalStateSize = self.solver.getNLocalAdjointStates()
+        residuals = np.zeros(nLocalStateSize, self.dtype)
+
+        self.solver.getResiduals(residuals)
+
+        return residuals
+
     def arrayVal2Vec(self, array1, vec):
         """
         Assign the values from array1 to vec
@@ -2258,6 +2339,11 @@ class PYDAFOAM(object):
             f.write("\n")
             f.write("method                 %s;\n" % decomDict["method"])
             f.write("\n")
+            f.write("kahipCoeffs \n")
+            f.write("{ \n")
+            f.write("    config                  %s;\n" % decomDict["kahipCoeffs"]["config"])
+            f.write("    imbalance              %g;\n" % decomDict["kahipCoeffs"]["imbalance"])
+            f.write("} \n")
             f.write("simpleCoeffs \n")
             f.write("{ \n")
             f.write("    n                  (%d %d %d);\n" % (n[0], n[1], n[2]))
@@ -2424,3 +2510,417 @@ class TensorFlowHelper:
             for j in range(gradients_tf.shape[1]):
                 idx = i * gradients_tf.shape[1] + j
                 inputs_b[idx] = gradients_tf.numpy()[i, j] * outputs_b[i]
+
+
+class surrogateOptimization(object):
+    """
+    INFO:
+    -----
+    This is a class to handle surrogate based optimization (SBO) in DAFoam. SBO is currently supported for constrained optimization and uses the
+    Efficient Global Optimization algorithm. To run this optimization, import this class to a separate python file in a DAFoam case and pass in
+    the surrogateOptions dictionary and openMDAO model to surrogateOptimization:
+
+                    surrogateOptimization(surrogateOptions , om_prob)
+
+    The surrogateOptions dictionary is a list of optimization parameters to use for fine tuning the surrogate modeling and optimization. For the
+    full list of options:
+
+                    surrogateOptions = {
+                        "criterion"  : criterion for next evaluation point determination -> "EI", "SBO", "LCB"
+                        "iters"      : num iterations to optimize objective function -----> int
+                        "numDOE"     : num DOE points to use -----------------------------> int
+                        "seed"       : seed value to replicate results -------------------> int
+                        "dvNames"    : names of design variables -------------------------> ["dv1 name" , "dv2 name" , . . .]
+                        "dvBounds"   : bounds on each design variable --------------------> [[L1 , U1] , [L2 , U2] , . . .]
+                        "dvSizes"    : design variable sizes (ex. num of FFDs) -----------> [size1 , size2 , . . .]
+                        "objFunc"    : name of objective function ------------------------> str
+                        "maxObj"     : maximize objective function (if True) -------------> bool
+                        "cons"       : array of constrained om_prob values ---------------> ['con1 value' , 'con2 value' , . . .]
+                        "conWeights" : array of scalar values for constraint penalties ---> float
+                        "consEqs"    : array of constraint equations ---------------------> ["eq1(x)" , "eq2(x)" , . . .]
+                        "maxIter"    : maximum number of iterations ----------------------> int
+                        "nStart"     : number of start points ----------------------------> int
+                        "nParallel"  : parallel samples for q-EI criterion ---------------> int
+                        "qEI"        : how to maximize q-EI ------------------------------> "KB" , "KBLB" , "KBUB" , "KBRand" , "CLmin"
+                        "xdoe"       : array of initial DOE points -----------------------> [X1 , X2 , . . .]
+                        "ydoe"       : array of initial DOE point outputs ----------------> [Y1 , Y2 , . . .]
+                        "verbose"    : print extra information during run time -----------> bool
+                        "tunneling"  : penalize points which have already been evaluated -> bool
+                        "reInterp"   : reinterpolate variance for training points --------> bool
+                        "evaluator"  : object to modify how the obj func is evaluated ----> object
+                        "surrogate"  : which surrogate model to use ----------------------> "KRG" , "KPLS" , "KPLSK" , "GEKPLS" , "MGP" , "GPX"
+                    }
+
+    NOTES ON IMPLEMENTATION:
+    ------------------------
+    1.) "designVars", "dvNames", "dvBounds", and "dvSizes" must have the design variable information listed in the same order
+    2.) "cons", "conWeight", and "consEqs" must have the constraint function information listed in the same order
+    3.) all constraint equations in "consEqs" must be equations of variable x
+    4.) provide either "xdoe" or "numDOE". "numDOE" uses a RNG to get the initial DOE points, xdoe is for specifying the initial xdoe points (xdoe may be coupled with ydoe)
+    5.) The required fields are: "dvNames", "dvBounds", "dvSizes", "objFunc", and DOE points ("numDOE" or "xdoe" however "ydoe" is optional but can only be paired with "ydoe")
+    6.) Supported constraint types are: equality (x = a), and inequality (a <= x, x <= a, a <= x <= b)
+    """
+
+    def __init__(self, options, om_prob, comm=None):
+
+        # set defaults
+        defaultOptions = {
+            ## The criterion used to terminate the optimization problem. The default option is to use
+            ## the 'expected improvement' (EI) scheme. When the the EI is less than a specified threshold
+            ## the optimization terminates. Other options are 'surrogate based optimization' (SBO),
+            ## and 'lower confidence bound' (LCB). SBO directly uses the prediction of the surrogate model
+            ## and LCB uses the 99% confidence interval.
+            "criterion": "EI",
+            ## The number of iterations for the optimization problem. Increase this to converge better on the
+            ## optimal point (will increase run time if increasing).
+            "iters": 5,
+            ## The number of 'design of experiment' (DOE) points to use. This is the number of sampling points
+            ## to use for initially creating the surrogate model. More points will help find the optimal point
+            ## but increase the run time.
+            "numDOE": None,
+            ## The DOE points (numDOE) are generated via an RNG. Results are only guaranteed to be reproducible
+            ## if a seed value is set. Here the default option is 45.
+            "seed": 45,
+            ## Assign names to design variables.
+            "dvNames": [],
+            ## Assign design variable bounds.
+            "dvBounds": [],
+            ## Array of design variable sizes.
+            "dvSizes": [],
+            ## Assign an objective function from runScript.
+            "objFunc": "",
+            ## Whether to maximize the objective function (default is to minimize)
+            "maxObj": False,
+            ## Assign constrained values if doing a constrained optimization.
+            "cons": None,
+            ## A quadratic penalty method is implemented for constrained optimization
+            ## with a scalar value ('conWeights'). The quadratic penalty method is then
+            ## conWeight * constraint(x)**2. All constraints must be a function of
+            ## variable x.
+            "conWeights": None,
+            ## The constraint equations to use in the problem. As an example, to constrain
+            ## lift, Cl = 0.5, the constraint would be formatted as:
+            ##
+            ##                 Cl = 0.5 -> Cl - 0.5 = 0 -> x - 0.5 = 0
+            ##                 then -> "consEqs": ["x - 0.5"]
+            "consEqs": None,
+            ## Maximum number of internal optimizations.
+            "maxIter": 20,
+            ## Number of optimization start points.
+            "nStart": 20,
+            ## Number of parallel samples for q-EI criterion.
+            "nParallel": 1,
+            ## q-EI maximization strategy.
+            "qEI": "KBLB",
+            ## Initial DOE points to use (if not wanting to use numDOE which generates the doe points using a RNG).
+            "xdoe": None,
+            ## Initial DOE outputs to use for intial DOE inputs.
+            "ydoe": None,
+            ## Wether to print additional computation information during the execution.
+            "verbose": False,
+            ## Whether to enable the penalization of points that have been already evaluated in the EI criterion.
+            "tunneling": False,
+            ## Whether to reinterpolate the variance for the training points.
+            "reInterp": False,
+            ## Object used to run objective function for multiple points.
+            "evaluator": None,
+            ## Kriging-based surrogate model to use.
+            "surrogate": "KRG",
+        }
+        self.options = {**defaultOptions, **options}
+        self.om_prob = om_prob
+        self.comm = MPI.COMM_WORLD
+
+        # set options
+        self.dvNames = self.options["dvNames"]
+        self.dvSizes = self.options["dvSizes"]
+        self.numDVs = len(self.dvNames)
+
+        # gather inputs if constrained optiimization
+        if self.options["cons"] != None:
+            self.constrainedOpt = True
+            self.consEqs = self.options["consEqs"]
+            self.cons = self.options["cons"]
+            self.numCons = len(self.cons)
+            self.conWeights = self.options["conWeights"]
+        else:
+            self.constrainedOpt = False
+
+        # run optimization
+        self.run_optimization()
+
+    def run_optimization(self):
+        """
+        Coordinate the optimization between rank 0 (master) and all ranks (workers) for parallel runs
+        """
+
+        if self.comm.rank == 0:
+
+            # set counter for DOE points
+            self.DOEidx = 0
+
+            # run opt for rank 0
+            self.EGO()
+
+            # broadcast None to other ranks
+            self.comm.bcast(None, root=0)
+
+        else:
+
+            # worker ranks wait
+            while True:
+                x_i = self.comm.bcast(None, root=0)
+                if x_i is None:
+
+                    # recieve stop signal
+                    break
+
+                # worker ranks participate in CFD
+                self.setDesignPoint(x_i)
+                self.om_prob.run_model()
+
+    def obj_val(self, x):
+        """
+        Calculate objective function and get constraint function values
+        """
+
+        # get number of points
+        self.length = int(x.shape[0])
+        self.objFunc = np.zeros(self.length)
+
+        for i in range(self.length):
+
+            # rank 0 broadcasts the design point to all ranks
+            x_i = self.comm.bcast(x[i], root=0)
+
+            # all ranks update design variables and run CFD
+            self.setDesignPoint(x_i)
+
+            if self.comm.rank == 0:
+
+                # tick up counter
+                self.DOEidx += 1
+
+                # print header
+                print("----------------------------------")
+                print("Running analysis on DOE point:", self.DOEidx)
+                print("----------------------------------")
+
+            # run CFD
+            self.om_prob.run_model()
+
+            # only rank 0 processes results
+            if self.comm.rank == 0:
+                if self.options["maxObj"]:
+                    self.objFunc[i] = -1 * self.om_prob.get_val(self.options["objFunc"])
+                if not self.options["maxObj"]:
+                    self.objFunc[i] = self.om_prob.get_val(self.options["objFunc"])
+
+                if self.constrainedOpt:
+                    self.conViolation = np.zeros(self.numCons)
+                    for k in range(self.numCons):
+                        self.conViolation[k] = self.evalConstraint(self.consEqs[k], self.om_prob.get_val(self.cons[k]))
+                        self.objFunc[i] += self.conWeights[k] * self.conViolation[k] ** 2.0
+
+                self.returnDesignPointInfo(x_i, self.DOEidx)
+
+        return self.objFunc.reshape((-1, 1))
+
+    def EGO(self):
+        """
+        Run the EGO optimization and return optimum point to user
+        """
+        # initialize design space
+        design_space = DesignSpace(self.options["dvBounds"])
+
+        # get which surrogate model to use
+        surrogateModels = {
+            "KRG": KRG,
+            "KPLS": KPLS,
+            "KPLSK": KPLSK,
+            "GEKPLS": GEKPLS,
+            "MGP": MGP,
+            "GPX": GPX,
+        }
+
+        smChoice = surrogateModels.get(self.options["surrogate"])
+        surrogateModel = smChoice(design_space=design_space, print_global=False)
+
+        # some options cannot coexist, such as "numDOE" and "xdoe". To simplify the implementation,
+        # we gather defaults and append with optional inputs to build the EGO parameters
+        ego_kwargs = {
+            "n_iter": self.options["iters"],
+            "criterion": self.options["criterion"],
+            "surrogate": surrogateModel,
+            "seed": self.options["seed"],
+            "n_max_optim": self.options["maxIter"],
+            "n_start": self.options["nStart"],
+            "n_parallel": self.options["nParallel"],
+            "qEI": self.options["qEI"],
+            "verbose": self.options["verbose"],
+            "enable_tunneling": self.options["tunneling"],
+            "is_ri": self.options["reInterp"],
+        }
+
+        # now add optional inputs to ego_kwargs
+        # add evaluator
+        if self.options["evaluator"] != None:
+            ego_kwargs["evaluator"] = self.options["evaluator"]
+
+        # if xdoe is provided:
+        if self.options["xdoe"] != None:
+            ego_kwargs["xdoe"] = self.options["xdoe"]
+            if self.options["ydoe"] != None:
+                ego_kwargs["ydoe"] = self.options["ydoe"]
+
+        # if numDOE is provided
+        elif self.options["numDOE"] != None:
+            ego_kwargs["n_doe"] = self.options["numDOE"]
+        else:
+            raise ValueError(
+                'Input parameter(s) for DOE points is incorrect! Either use "numDOE" (int) or "xdoe" (numpy.ndarray)'
+            )
+
+        # Create EGO instance
+        ego = EGO(**ego_kwargs)
+
+        # run EGO algorithm
+        x_opt, _, _, _, _ = ego.optimize(fun=self.obj_val)
+
+        print("---------------------------------------------------------")
+        print("Optimization finished, running analysis on optimal point ")
+        print("---------------------------------------------------------")
+
+        # run primmal on optimal point for post-processing
+        x_opt_bcast = self.comm.bcast(x_opt, root=0)
+        self.setDesignPoint(x_opt_bcast)
+        self.om_prob.run_model()
+
+        # return opt design point info
+        if self.constrainedOpt:
+            self.conViolation = np.zeros(self.numCons)
+            for k in range(self.numCons):
+                self.conViolation[k] = self.evalConstraint(self.consEqs[k], self.om_prob.get_val(self.cons[k]))
+
+        self.returnDesignPointInfo(x_opt, "opt")
+
+    def parseConstraint(self, conEq, conValue):
+        """
+        Parse constraint functions and return largest violation from array of constrained values
+        """
+
+        # determine the largest violation
+        # only min and max points of the value array need to be tested to find the largest violation
+        points = [min(conValue), max(conValue)]
+
+        violations = np.zeros(2)  # array to store solutions
+
+        for i in range(2):
+            violations[i] = self.evalConstraint(conEq, [points[i]])
+
+        # return point with largest violation
+        return max(violations.min(), violations.max(), key=abs)
+
+    def evalConstraint(self, conEq, conValue):
+        """
+        Compute constraint function value
+        """
+
+        # OpenMDAO by default returns a numpy array. It is easier
+        # to work with a list in this function
+        if isinstance(conValue, np.ndarray):
+            conValue = conValue.tolist()
+
+        # evaluate constraint
+        # some constraints main contain an array of data points. Here,
+        # the penalty is based on the largest violation
+        if len(conValue) == 1:
+            conEvaluated = eval(conEq, {"__builtins__": {}}, {"x": conValue[0]})
+        else:
+            conEvaluated = self.parseConstraint(conEq, conValue)
+
+        if isinstance(conEvaluated, bool):
+            if conEvaluated:  # if true, constraint is satisfied so return zero penalty
+                return 0.0
+
+            elif not conEvaluated:  # if false, constraint is violated so return non-zero penalty
+
+                # parse constraint
+                parsedConEq = conEq.split()
+
+                # there are two types of inequality constraints handled:
+                # constraint of the form x <= b (equivalently, b <= x)
+                # or a <= x <= b. The former has length 3, the ladder
+                # has length 5
+                if len(parsedConEq) == 3:
+                    return eval(parsedConEq[0] + "-" + parsedConEq[-1], {"__builtins__": {}}, {"x": conValue[0]})
+
+                if len(parsedConEq) == 5:
+                    # this constraint is in the form a <= x <= b. This needs to be split into two
+                    # constraints: a <= x and x <= b.
+                    # Let a <= x be the LHScon, and x <= b be the RHScon. Only one can be violated at a time,
+                    # so the penalty is based on which (LHScon or RHScon) is violated.
+                    LHScon = eval(
+                        parsedConEq[0] + parsedConEq[1] + parsedConEq[2], {"__builtins__": {}}, {"x": conValue[0]}
+                    )
+                    RHScon = eval(
+                        parsedConEq[2] + parsedConEq[3] + parsedConEq[4], {"__builtins__": {}}, {"x": conValue[0]}
+                    )
+
+                    # find which is violated and return penalty
+                    if not LHScon:
+                        # LHScon is violated
+                        return eval(parsedConEq[0] + "-" + parsedConEq[2], {"__builtins__": {}}, {"x": conValue[0]})
+                    elif not RHScon:
+                        # RHScon is violated
+                        return eval(parsedConEq[2] + "-" + parsedConEq[-1], {"__builtins__": {}}, {"x": conValue[0]})
+
+        elif not isinstance(conEvaluated, bool):
+            return conEvaluated
+
+    def setDesignPoint(self, x):
+        """
+        Assign DV values to OpenMDAO model
+        """
+        start = 0
+        for j in range(self.numDVs):
+            self.om_prob.set_val(self.dvNames[j], x[start : start + self.dvSizes[j]])
+            start += self.dvSizes[j]
+
+    def returnDesignPointInfo(self, x, DOEidx):
+        """
+        Return information about current point to user
+        """
+        print("----------------------------------")
+        print("Analysis results of DOE point:", DOEidx)
+        print("----------------------------------")
+
+        # return objective function value
+        print("Objective function:")
+        print("-------------------")
+        print(self.options["objFunc"], "=", self.om_prob.get_val(self.options["objFunc"])[0])
+        print("\n")
+
+        # return design variables
+        print("Design variables:")
+        print("-----------------")
+        start = 0
+        for j in range(self.numDVs):
+            print(self.dvNames[j], "=", x[start : start + self.dvSizes[j]])
+            start += self.dvSizes[j]
+        print("\n")
+
+        # return constraint values/info
+        if self.constrainedOpt:
+            print("Constraint values:")
+            print("------------------")
+            for k in range(self.numCons):
+                print(self.cons[k], "=", self.om_prob.get_val(self.cons[k]))
+
+            print("\n")
+            print("Maximum constraint violation:")
+            print("-----------------------------")
+            for k in range(self.numCons):
+                print(self.cons[k], ":", self.conViolation[k])
+
+        print("\n")

@@ -270,14 +270,6 @@ void DALinearEqnFSModel::createMLRKSP(
             {
                 localMatrixOrdering = MATORDERINGQMD;
             }
-            else if (jacMatReOrdering == "amd")
-            {
-                localMatrixOrdering = MATORDERINGAMD;
-            }
-            else if (jacMatReOrdering == "metisnd")
-            {
-                localMatrixOrdering = MATORDERINGMETISND;
-            }
             else
             {
                 Info << "matOrdering not known. Using default: nested dissection" << endl;

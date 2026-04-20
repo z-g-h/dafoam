@@ -220,9 +220,15 @@ void DALinearEqnASM::createMLRKSP(
     MLRoverlap = asmOverlap;
     PCASMSetOverlap(MLRGlobalPC, MLRoverlap);
 
-    if (daOption_.getOption<label>("debug"))
+    label KSPCalcEigen = daOption_.getSubDictOption<label>("adjEqnOption", "KSPCalcEigen");
+    if (KSPCalcEigen)
     {
         KSPSetComputeEigenvalues(ksp, PETSC_TRUE);
+    }
+
+    if (KSPCalcSingularVal_)
+    {
+        KSPSetComputeSingularValues(ksp, PETSC_TRUE);
     }
 
     //Setup the main ksp context before extracting the subdomains
@@ -296,14 +302,6 @@ void DALinearEqnASM::createMLRKSP(
         else if (matOrdering == "qmd")
         {
             localMatrixOrdering = MATORDERINGQMD;
-        }
-        else if (matOrdering == "amd")
-        {
-            localMatrixOrdering = MATORDERINGAMD;
-        }
-        else if (matOrdering == "metisnd")
-        {
-            localMatrixOrdering = MATORDERINGMETISND;
         }
         else
         {

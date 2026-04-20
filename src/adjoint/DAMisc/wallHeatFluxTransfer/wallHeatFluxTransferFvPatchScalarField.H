@@ -48,7 +48,7 @@ Usage
     {
         type            wallHeatFluxTransfer;
 
-        Ta              constant 300.0;
+        Ta              300.0;
         h               uniform 10.0;
         value           $internalField;
     }

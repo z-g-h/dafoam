@@ -24,6 +24,7 @@ DALinearEqn::DALinearEqn(
       daOption_(daOption),
       daIndex_(daIndex)
 {
+    KSPCalcSingularVal_ = daOption_.getSubDictOption<label>("adjEqnOption", "KSPCalcSingularVal");
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -115,6 +116,30 @@ label DALinearEqn::solveLinearEqn(
         finalResNorm,
         this->getRunTime());
 
+    label KSPCalcEigen = daOption_.getSubDictOption<label>("adjEqnOption", "KSPCalcEigen");
+    if (KSPCalcEigen)
+    {
+        PetscInt n = its; /* upper bound; GMRES gives since-last-restart */
+        PetscReal *er, *ei;
+        PetscMalloc2(n, &er, n, &ei);
+        PetscInt neig;
+        KSPComputeEigenvalues(ksp, n, er, ei, &neig); /* preconditioned operator */
+
+        for (PetscInt i = 0; i < neig; i++)
+        {
+            PetscPrintf(PETSC_COMM_WORLD, "eig[%d] = %g + %g i\n", (int)i, (double)er[i], (double)ei[i]);
+        }
+        PetscFree2(er, ei);
+    }
+
+    if (KSPCalcSingularVal_)
+    {
+        PetscReal smin, smax, ratio;
+        KSPComputeExtremeSingularValues(ksp, &smax, &smin);
+        ratio = smax / smin;
+        PetscPrintf(PETSC_COMM_WORLD, "Singular value ratio. sMax / sMin = %g / %g = %g \n", (double)smax, (double)smin, (double)ratio);
+    }
+
     Info << "**Completed**! Total iterations: " << its
          << ". PetscConvergedReason: " << reason << ". " << this->getRunTime() << " s" << endl;
 
@@ -164,12 +189,26 @@ PetscErrorCode DALinearEqn::myKSPMonitor(
     PetscScalar runTime = daLinearEqn->getRunTime();
     if (n % printFrequency == 0)
     {
+
         PetscPrintf(
             PETSC_COMM_WORLD,
-            "Main iteration %d KSP Residual norm %14.12e %.2f s\n",
+            "Main iteration %D KSP Residual norm %14.12e %.2f s. ",
             n,
             rnorm,
             runTime);
+
+        label KSPCalcSingularVal = daLinearEqn->KSPCalcSingularVal();
+        if (KSPCalcSingularVal)
+        {
+            PetscReal smin, smax, ratio;
+            KSPComputeExtremeSingularValues(ksp, &smax, &smin);
+            ratio = smax / smin;
+            PetscPrintf(PETSC_COMM_WORLD, "sMax/sMin=%g/%g=%g", (double)smax, (double)smin, (double)ratio);
+        }
+
+        PetscPrintf(
+            PETSC_COMM_WORLD,
+            "\n");
     }
     return 0;
 }

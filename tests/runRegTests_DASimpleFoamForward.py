@@ -23,7 +23,7 @@ if gcomm.rank == 0:
     os.system("cp -r 0.incompressible/* 0/")
     os.system("cp -r system.incompressible/* system/")
     os.system("cp -r constant/turbulenceProperties.sa constant/turbulenceProperties")
-    replace_text_in_file("system/fvSchemes", "meshWave;", "meshWaveFrozen;")
+    # replace_text_in_file("system/fvSchemes", "meshWave;", "meshWaveFrozen;")
 
 # aero setup
 U0 = 10.0
@@ -138,8 +138,14 @@ class Top(Multipoint):
         self.geometry.nom_addLocalDV(dvName="shape", pointSelect=PS)
 
         # add the design variables to the dvs component's output
+        # create an all zero beta array beta0 (beta0 is a global array)
+        beta0 = np.zeros(nCells)
+        # read the beta field from the 0 folder (serial) or processor*/0 (parallel) into beta0
+        self.cruise.coupling.solver.DASolver.solver.getOFFieldGlobal("betaFINuTilda", "scalar", beta0)
+        # need to sum all processors' beta0 into the global beta
+        gcomm.Allreduce(MPI.IN_PLACE, beta0, op=MPI.SUM)
         self.dvs.add_output("shape", val=np.zeros(1))
-        self.dvs.add_output("beta", val=np.ones(nCells))
+        self.dvs.add_output("beta", val=beta0)
         self.dvs.add_output("fv_source", val=np.zeros(nCells * 3))
         self.dvs.add_output("u_in", val=np.array([10.0, 0.0, 0.0]))
 

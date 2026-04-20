@@ -212,7 +212,6 @@ void DAOutputThermalCoupling::run(scalarList& output)
     else if (discipline_ == "thermal")
     {
         // for solid solvers Q = k * dT/dz, so kappa = k
-
         const volScalarField& kappa = const_cast<volScalarField&>(mesh_.thisDb().lookupObject<volScalarField>("kappa"));
 
         forAll(patches_, idxI)
