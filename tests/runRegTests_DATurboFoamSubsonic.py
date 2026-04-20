@@ -28,13 +28,14 @@ if gcomm.rank == 0:
     os.system("cp -r system/fvSolution.subsonic system/fvSolution")
     os.system("cp -r system/fvSchemes.subsonic system/fvSchemes")
     os.system("cp -r constant/turbulenceProperties.sa constant/turbulenceProperties")
-    replace_text_in_file("system/fvSchemes", "meshWave;", "meshWaveFrozen;")
+    # replace_text_in_file("system/fvSchemes", "meshWave;", "meshWaveFrozen;")
 
 daOptions = {
     "designSurfaces": ["blade"],
     "solverName": "DATurboFoam",
-    "primalMinResTol": 1.0e-11,
+    "primalMinResTol": 1.0e-12,
     "primalMinResTolDiff": 1e4,
+    "primalFuncStdTol": {"tol": 3e-12, "funcName": "TPR", "nSteps": 50},
     "primalBC": {
         "U0": {"variable": "U", "patches": ["inlet"], "value": [0.0, 0.0, 100.0]},
         "T0": {"variable": "T", "patches": ["inlet"], "value": [300.0]},
@@ -65,7 +66,7 @@ daOptions = {
     "inputInfo": {
         "aero_vol_coords": {"type": "volCoord", "components": ["solver", "function"]},
     },
-    "decomposeParDict": {"preservePatches": ["per1", "per2"]},
+    "decomposeParDict": {"method": "kahip", "preservePatches": ["per1", "per2"]},
 }
 
 meshOptions = {

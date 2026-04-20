@@ -49,6 +49,7 @@ cdef extern from "DASolvers.H" namespace "Foam":
         int solvePrimal()
         void runColoring()
         void calcJacTVecProduct(char *, char *, double *, char *, char *, double *, double *)
+        void getResiduals(double *)
         int getInputSize(char *, char *)
         int getOutputSize(char *, char *)
         void calcOutput(char *, char *, double *)
@@ -65,16 +66,19 @@ cdef extern from "DASolvers.H" namespace "Foam":
         void updateOFFields(double *)
         void getOFFields(double *)
         void getOFField(char *, char *, double *)
+        void getOFFieldGlobal(char *, char *, double *)
         void getOFMeshPoints(double *)
         void updateOFMesh(double *)
         int getGlobalXvIndex(int, int)
         int getNLocalAdjointStates()
         int getNLocalAdjointBoundaryStates()
         int getNLocalCells()
+        int getNGlobalCells()
         int getNLocalPoints()
         int checkMesh()
         double getdFScaling(char *, int)
         double getTimeOpFuncVal(char *)
+        double calcFunction(char *)
         double getElapsedClockTime()
         double getElapsedCpuTime()
         void calcCouplingFaceCoords(double *, double *)
@@ -87,6 +91,8 @@ cdef extern from "DASolvers.H" namespace "Foam":
         void updateStateBoundaryConditions()
         void calcPrimalResidualStatistics(char *)
         void setPrimalBoundaryConditions(int)
+        void setPrimalInitialConditions(int)
+        void getInitStateVals(int)
         int runFPAdj(PetscVec, PetscVec)
         int solveAdjointFP(PetscVec, PetscVec)
         void initTensorFlowFuncs(pyComputeInterface, void *, pyJacVecProdInterface, void *, pySetCharInterface, void *)
@@ -173,6 +179,14 @@ cdef class pyDASolvers:
             inputSize,
             inputs_data,
             seeds_data)
+    
+    def getResiduals(self, np.ndarray[double, ndim=1, mode="c"] residuals):
+        
+        assert len(residuals) == self.getNLocalAdjointStates(), "invalid input array size!"
+
+        cdef double *residuals_data = <double*>residuals.data
+
+        self._thisptr.getResiduals(residuals_data)
     
     def getInputSize(self, inputName, inputType):
         return self._thisptr.getInputSize(inputName.encode(), inputType.encode())
@@ -273,6 +287,12 @@ cdef class pyDASolvers:
         cdef double *field_data = <double*>field.data
         self._thisptr.getOFField(fieldName.encode(), fieldType.encode(), field_data)
     
+    def getOFFieldGlobal(self, fieldName, fieldType, np.ndarray[double, ndim=1, mode="c"] field):
+        if fieldType == "scalar":
+            assert len(field) == self.getNGlobalCells(), "invalid array size!"
+        cdef double *field_data = <double*>field.data
+        self._thisptr.getOFFieldGlobal(fieldName.encode(), fieldType.encode(), field_data)
+    
     def updateOFMesh(self, np.ndarray[double, ndim=1, mode="c"] vol_coords):
         assert len(vol_coords) == self.getNLocalPoints() * 3, "invalid array size!"
         cdef double *vol_coords_data = <double*>vol_coords.data
@@ -290,6 +310,9 @@ cdef class pyDASolvers:
     def getNLocalCells(self):
         return self._thisptr.getNLocalCells()
     
+    def getNGlobalCells(self):
+        return self._thisptr.getNGlobalCells()
+    
     def getNLocalPoints(self):
         return self._thisptr.getNLocalPoints()
     
@@ -298,6 +321,9 @@ cdef class pyDASolvers:
     
     def getTimeOpFuncVal(self, functionName):
         return self._thisptr.getTimeOpFuncVal(functionName.encode())
+    
+    def calcFunction(self, functionName):
+        return self._thisptr.calcFunction(functionName.encode())
     
     def getdFScaling(self, functionName, timeIdx=-1):
         return self._thisptr.getdFScaling(functionName.encode(), timeIdx)
@@ -345,6 +371,12 @@ cdef class pyDASolvers:
     
     def setPrimalBoundaryConditions(self, printInfo):
         self._thisptr.setPrimalBoundaryConditions(printInfo)
+    
+    def setPrimalInitialConditions(self, printInfo):
+        self._thisptr.setPrimalInitialConditions(printInfo)
+    
+    def getInitStateVals(self, printInfo):
+        self._thisptr.getInitStateVals(printInfo)
     
     def readStateVars(self, timeVal, timeLevel):
         self._thisptr.readStateVars(timeVal, timeLevel)

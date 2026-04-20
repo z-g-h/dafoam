@@ -459,7 +459,11 @@ class DAFoamSolver(ImplicitComponent):
                 if DASolver.getOption("writeMinorIterations"):
                     if DASolver.dRdWTPC is None or DASolver.ksp is None:
                         DASolver.dRdWTPC = PETSc.Mat().create(self.comm)
-                        DASolver.solver.calcdRdWT(1, DASolver.dRdWTPC)
+                        if (DASolver.getOption("adjEqnOption"))["readPCMat"]:
+                            viewer = PETSc.Viewer().createBinary("dRdWTPC.bin", "r", comm=self.comm)
+                            DASolver.dRdWTPC = PETSc.Mat().load(viewer)
+                        else:
+                            DASolver.solver.calcdRdWT(1, DASolver.dRdWTPC)
                         DASolver.ksp = PETSc.KSP().create(self.comm)
                         DASolver.solverAD.createMLRKSPMatrixFree(DASolver.dRdWTPC, DASolver.ksp)
                 # otherwise, we need to recompute the PC mat based on adjPCLag
@@ -506,7 +510,11 @@ class DAFoamSolver(ImplicitComponent):
                             if DASolver.dRdWTPC is not None:
                                 DASolver.dRdWTPC.destroy()
                             DASolver.dRdWTPC = PETSc.Mat().create(self.comm)
-                            DASolver.solver.calcdRdWT(1, DASolver.dRdWTPC)
+                            if (DASolver.getOption("adjEqnOption"))["readPCMat"]:
+                                viewer = PETSc.Viewer().createBinary("dRdWTPC.bin", "r", comm=self.comm)
+                                DASolver.dRdWTPC = PETSc.Mat().load(viewer)
+                            else:
+                                DASolver.solver.calcdRdWT(1, DASolver.dRdWTPC)
                             # reset the KSP
                             if DASolver.ksp is not None:
                                 DASolver.ksp.destroy()
@@ -1536,6 +1544,10 @@ class DAFoamSolverUnsteady(ExplicitComponent):
                 # if it is dynamic mesh, read the mesh points
                 if DASolver.getOption("dynamicMesh")["active"]:
                     DASolver.readDynamicMeshPoints(timeVal, deltaT, n, ddtSchemeOrder)
+
+                # print out residuals for debugging
+                if self.DASolver.getOption("debug"):
+                    DASolver.solverAD.calcPrimalResidualStatistics("print")
 
                 # calculate dFd? scaling, if time index is within the unsteady objective function
                 # index range, prescribed in unsteadyAdjointDict, we calculate dFdW

@@ -25,7 +25,7 @@ DARegression/DARegression.C
 DATimeOp/DATimeOp.C
 DATimeOp/DATimeOpFinal.C
 DATimeOp/DATimeOpAverage.C
-DATimeOp/DATimeOpMaxKS.C
+DATimeOp/DATimeOpMax.C
 
 DAFunction/DAFunction.C
 DAFunction/DAFunctionForce.C
@@ -42,6 +42,7 @@ DAFunction/DAFunctionLocation.C
 DAFunction/DAFunctionMeshQualityKS.C
 DAFunction/DAFunctionVonMisesStressKS.C
 DAFunction/DAFunctionResidualNorm.C
+DAFunction/DAFunctionFieldMax.C
 
 DAFvSource/DAFvSource.C
 DAFvSource/DAFvSourceActuatorDisk.C
@@ -55,6 +56,7 @@ DAInput/DAInputVolCoord.C
 DAInput/DAInputStateVar.C
 DAInput/DAInputPatchVelocity.C
 DAInput/DAInputPatchVar.C
+DAInput/DAInputPatchField.C
 DAInput/DAInputField.C
 DAInput/DAInputFieldUnsteady.C
 DAInput/DAInputThermalCoupling.C
@@ -80,6 +82,7 @@ DAModel/DARadiationModel/DARadiationModel.C
 DAModel/DARadiationModel/DAP1.C
 
 DAStateInfo/DAStateInfo.C
+DAStateInfo/DAStateInfoScalarTransportFoam.C
 DAStateInfo/DAStateInfoSimpleFoam.C
 DAStateInfo/DAStateInfoPimpleFoam.C
 DAStateInfo/DAStateInfoPimpleDyMFoam.C
@@ -89,8 +92,12 @@ DAStateInfo/DAStateInfoRhoSimpleCFoam.C
 DAStateInfo/DAStateInfoTurboFoam.C
 DAStateInfo/DAStateInfoHeatTransferFoam.C
 DAStateInfo/DAStateInfoSolidDisplacementFoam.C
+DAStateInfo/DAStateInfoInterFoam.C
+DAStateInfo/DAStateInfoTopoChtFoam.C
+DAStateInfo/DAStateInfoHisaFoam.C
 
 DAResidual/DAResidual.C
+DAResidual/DAResidualScalarTransportFoam.C
 DAResidual/DAResidualSimpleFoam.C
 DAResidual/DAResidualPimpleFoam.C
 DAResidual/DAResidualPimpleDyMFoam.C
@@ -100,8 +107,12 @@ DAResidual/DAResidualRhoSimpleCFoam.C
 DAResidual/DAResidualTurboFoam.C
 DAResidual/DAResidualHeatTransferFoam.C
 DAResidual/DAResidualSolidDisplacementFoam.C
+DAResidual/DAResidualInterFoam.C
+DAResidual/DAResidualTopoChtFoam.C
+DAResidual/DAResidualHisaFoam.C
 
 DASolver/DASolver.C
+DASolver/DAScalarTransportFoam/DAScalarTransportFoam.C
 DASolver/DASimpleFoam/DASimpleFoam.C
 DASolver/DAPimpleFoam/DAPimpleFoam.C
 DASolver/DAIrkPimpleFoam/DAIrkPimpleFoam.C
@@ -112,6 +123,9 @@ DASolver/DARhoSimpleCFoam/DARhoSimpleCFoam.C
 DASolver/DATurboFoam/DATurboFoam.C
 DASolver/DAHeatTransferFoam/DAHeatTransferFoam.C
 DASolver/DASolidDisplacementFoam/DASolidDisplacementFoam.C
+DASolver/DAInterFoam/DAInterFoam.C
+DASolver/DATopoChtFoam/DATopoChtFoam.C
+DASolver/DAHisaFoam/DAHisaFoam.C
 
 DAMisc/MRFDF/MRFZoneDF.C
 DAMisc/MRFDF/MRFZoneListDF.C
@@ -121,5 +135,7 @@ DAMisc/pimpleControlDF/pimpleControlDF.C
 DAMisc/tractionDisplacement/tractionDisplacementFvPatchVectorField.C
 DAMisc/alphatWallFunctionIncomp/alphatWallFunctionIncompFvPatchScalarField.C
 DAMisc/fixedWallHeatFlux/fixedWallHeatFluxFvPatchScalarField.C
+DAMisc/MULESDF/CMULESDF.C
+DAMisc/wallHeatFluxTransfer/wallHeatFluxTransferFvPatchScalarField.C
 
 LIB = $(DAFOAM_ROOT_PATH)/OpenFOAM/sharedLibs/libDASolver$(WM_CODI_AD_LIB_POSTFIX)

@@ -66,6 +66,12 @@ public:
         return DASolverPtr_->solvePrimal();
     }
 
+    /// return the residual arrays own by this processor
+    void getResiduals(double* residuals)
+    {
+        DASolverPtr_->getResiduals(residuals);
+    }
+
     label getInputSize(
         const word inputName,
         const word inputType)
@@ -301,10 +307,22 @@ public:
         return DASolverPtr_->getNLocalCells();
     }
 
+    /// return the number of global cells
+    label getNGlobalCells() const
+    {
+        return DASolverPtr_->getNGlobalCells();
+    }
+
     /// return the value of objective based on timeOp
     double getTimeOpFuncVal(const word functionName)
     {
         return DASolverPtr_->getTimeOpFuncVal(functionName);
+    }
+
+    /// calculate and return the function value
+    double calcFunction(const word functionName)
+    {
+        return DASolverPtr_->calcFunction(functionName);
     }
 
     /// get the scaling factor for dF/d? computation
@@ -463,6 +481,16 @@ public:
         DASolverPtr_->setPrimalBoundaryConditions(printInfo);
     }
 
+    void setPrimalInitialConditions(const label printInfo = 1)
+    {
+        DASolverPtr_->setPrimalInitialConditions(printInfo);
+    }
+
+    void getInitStateVals(const label printInfo)
+    {
+        DASolverPtr_->getInitStateVals(printInfo);
+    }
+
     label runFPAdj(
         Vec dFdW,
         Vec psi)
@@ -543,6 +571,15 @@ public:
     void updateInputFieldUnsteady()
     {
         DASolverPtr_->updateInputFieldUnsteady();
+    }
+
+    /// get the global list for flow field, this can be used to get the betaFI design variables
+    void getOFFieldGlobal(
+        const word fieldName,
+        const word fieldType,
+        double* globalField)
+    {
+        DASolverPtr_->getOFFieldGlobal(fieldName, fieldType, globalField);
     }
 };
 

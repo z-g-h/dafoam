@@ -171,6 +171,7 @@ daOptions = {
             "varName": "wallHeatFlux",
             "varType": "scalar",
             "indices": [0],
+            "useGeoWeight": True,
             "timeDependentRefData": False,
         },
         "PVar": {
@@ -181,6 +182,7 @@ daOptions = {
             "varName": "p",
             "varType": "scalar",
             "indices": [0],
+            "useGeoWeight": True,
             "timeDependentRefData": False,
         },
         "PProbe": {
@@ -192,6 +194,7 @@ daOptions = {
             "varName": "p",
             "varType": "scalar",
             "indices": [0],
+            "useGeoWeight": True,
             "timeDependentRefData": False,
         },
         "UOutVar": {
@@ -203,6 +206,7 @@ daOptions = {
             "varName": "U",
             "varType": "vector",
             "indices": [0],
+            "useGeoWeight": True,
             "timeDependentRefData": False,
         },
         "ResNorm": {
@@ -210,8 +214,37 @@ daOptions = {
             "source": "allCells",
             "scale": 1.0,
             "resWeight": {"URes": 0.1, "pRes": 0.01, "phiRes": 10.0, "TRes": 0.01, "nuTildaRes": 100.0},
-            "timeDependentRefData": False,
             "timeOp": "average",
+        },
+        "ResNorm1": {
+            "type": "residualNorm",
+            "source": "allCells",
+            "resMode": "L1Norm",
+            "scale": 1.0,
+            "resWeight": {"URes": 1.0, "pRes": 1.0, "phiRes": 10.0, "TRes": 1.0, "nuTildaRes": 1.0},
+            "timeOp": "average",
+        },
+        # max pressure on the wall across all time instances
+        "PWallMax": {
+            "type": "fieldMax",
+            "source": "patchToFace",
+            "patches": ["walls"],
+            "fieldName": "p",
+            "fieldType": "scalar",
+            "scale": 1.0,
+            "timeOp": "max",
+            "timeOpMaxMode": "orig",
+        },
+        # max velocity at the outlet at the last time instance
+        "UOutMax": {
+            "type": "fieldMax",
+            "source": "patchToFace",
+            "patches": ["outlet"],
+            "fieldName": "U",
+            "fieldType": "vector",
+            "indices": [0, 1],
+            "scale": 1.0,
+            "timeOp": "final",
         },
     },
 }
@@ -221,6 +254,8 @@ DASolver()
 
 funcs = {}
 DASolver.evalFunctions(funcs)
+CD_calc = DASolver.solver.calcFunction("CD")
+funcs["CD"] = CD_calc
 
 if gcomm.rank == 0:
     print(funcs)
@@ -240,11 +275,14 @@ funcs_ref = {
     "IRMaxKS": 9.132901616926853,
     "PVolSum": 23.576101529517096,
     "UVolSum": 2004.7819430730992,
-    "HVar": 67.2400000627573,
-    "PVar": 2.476982282327677,
-    "PProbe": 3.6866882754983203,
-    "UOutVar": 0.5085431532392312,
-    "ResNorm": 0.5124351660034533,
+    "HVar": 67.24000006275729,
+    "PVar": 2.665633473846215,
+    "PProbe": 3.8532589372849655,
+    "UOutVar": 0.09531526371396179,
+    "ResNorm": 5.638190253290434,
+    "ResNorm1": 1255.3018729729918,
+    "PWallMax": 257.455157993952,
+    "UOutMax": 18.428979794738936,
 }
 
 fail = 0
