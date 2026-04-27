@@ -23,7 +23,6 @@
 #include "DAColoring.H"
 #include "DAField.H"
 #include "labelList.H"
-#include "mixingPlanePolyPatch.H"
 #include <unordered_map>
 #include <utility>
 

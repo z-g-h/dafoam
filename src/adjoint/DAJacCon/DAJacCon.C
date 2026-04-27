@@ -6,6 +6,9 @@
 \*---------------------------------------------------------------------------*/
 
 #include "DAJacCon.H"
+#ifdef TURBOMACHINERY
+#include "mixingPlanePolyPatch.H"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -140,15 +143,7 @@ void DAJacCon::setupJacobianConnections(
         {
             PetscInt idxJ = cols.first;
             PetscScalar val = cols.second;
-            /// if PCMode is reverse, we need to coloring dRdWT to get the row coloring.
-            if (daOption_.getOption<word>("PCMode") == "reverse" && daOption_.getSubDictOption<word>("useAD", "mode") == "reverse")
-            {
-                MatSetValues(conMat, 1, &idxJ, 1, &idxI, &val, INSERT_VALUES);
-            }
-            else
-            {
-                MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
-            }
+            MatSetValues(conMat, 1, &idxI, 1, &idxJ, &val, INSERT_VALUES);
         }
     }
     return;
@@ -255,22 +250,10 @@ void DAJacCon::initializeJacCon(const dictionary& options)
         PETSC_DETERMINE);
     MatSetFromOptions(jacCon_);
 
-    // if PCMode use AD and AD mode is reverse,
-    // we need to coloring the dRdWT to get the row coloring.
-    if (daOption_.getOption<word>("PCMode") == "reverse" && daOption_.getSubDictOption<word>("useAD", "mode") == "reverse")
-    {
-        this->preallocateJacobianMatrix(
-            jacCon_,
-            dRdWTPreallocOn_,
-            dRdWTPreallocOff_);
-    }
-    else
-    {
-        this->preallocateJacobianMatrix(
-            jacCon_,
-            dRdWPreallocOn_,
-            dRdWPreallocOff_);
-    }
+    this->preallocateJacobianMatrix(
+        jacCon_,
+        dRdWPreallocOn_,
+        dRdWPreallocOff_);
 
     //MatSetOption(jacCon_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(jacCon_);
@@ -864,6 +847,7 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
             }
             else if (patches[patchI].type() == "mixingPlane")
             {
+#ifdef TURBOMACHINERY
                 const mixingPlanePolyPatch& pp = refCast<const mixingPlanePolyPatch>(patches[patchI]);
                 /// get neighbour face index
                 label neiBFaceIStart = pp.neighbPatch().start();
@@ -944,6 +928,9 @@ void DAJacCon::calcFieldNeiBFaceGlobalCompact(labelListList& fieldNeiBFaceGlobal
                         }
                     }
                 }
+#else
+                FatalErrorIn("mixingPlane patch detected, but TURBOMACHINERY module is NOT enabled!") << abort(FatalError);
+#endif
             }
         }
     }

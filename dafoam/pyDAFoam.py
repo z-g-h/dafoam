@@ -530,10 +530,6 @@ class DAOPTION(object):
         ## when use a small yplus, switch this to "FSModel" could improve adjoint convegence performance.
         self.DAPC = "ASM"
 
-        ## PCMode: "reverse" - AD method to calculate PC jac; "fd" - finite difference method
-        # usually the "fd" is the best option.
-        self.PCMode = "fd"
-
         ## The Petsc options for solving the adjoint linear equation. These options should work for
         ## most of the case. If the adjoint does not converge, try to increase pcFillLevel to 2, or
         ## try "jacMatReOrdering": "nd"

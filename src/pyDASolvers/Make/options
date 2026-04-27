@@ -27,8 +27,13 @@ EXE_INC = \
     $(shell mpicc -show | grep -o '\-I[^ ]*') \
     $(shell python3 -c "import numpy; print('-I' + numpy.get_include())") \
     $(shell python3 -c "import petsc4py; print('-I' + petsc4py.get_include())") \
-    $(shell python3-config --includes) \
+    $(shell python3-config --includes) 
+
+ifeq ($(ENABLE_TURBOMACHINERY),1)
+EXE_INC += \
+    -DTURBOMACHINERY \
     -I/home/dafoamuser/code-development/mixingPlane/lnInclude  
+endif
 
     
 
@@ -56,6 +61,10 @@ LIB_LIBS = \
     -L$(DAFOAM_ROOT_PATH)/OpenFOAM/sharedLibs \
     $(shell mpicc -show | grep -o '\-L[^ ]*') \
     $(shell python3-config --ldflags) \
-    -fno-lto \
+    -fno-lto 
+
+ifeq ($(ENABLE_TURBOMACHINERY),1)
+LIB_LIBS += \
     -L$(FOAM_USER_LIBBIN) -lmixingPlane$(WM_CODI_AD_LIB_POSTFIX)
+endif
     

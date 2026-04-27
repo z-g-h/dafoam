@@ -30,8 +30,13 @@ EXE_INC = \
     -I$(PETSC_DIR)/include \
     -I$(PETSC_DIR)/$(PETSC_ARCH)/include \
     $(shell mpicc -show | grep -o '\-I[^ ]*') \
-    $(shell python3-config --includes) \
+    $(shell python3-config --includes) 
+
+ifeq ($(ENABLE_TURBOMACHINERY),1)
+EXE_INC += \
+    -DTURBOMACHINERY \
     -I/home/dafoamuser/code-development/mixingPlane/lnInclude  
+endif
     
     
 
@@ -56,6 +61,9 @@ LIB_LIBS = \
     -L$(PETSC_LIB) -lpetsc \
     $(shell mpicc -show | grep -o '\-L[^ ]*') \
     $(shell python3-config --ldflags) \
-    -fno-lto \
+    -fno-lto 
+
+ifeq ($(ENABLE_TURBOMACHINERY),1)
+LIB_LIBS += \
     -L$(FOAM_USER_LIBBIN) -lmixingPlane$(WM_CODI_AD_LIB_POSTFIX)
-    
+endif

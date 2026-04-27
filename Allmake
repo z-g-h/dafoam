@@ -5,6 +5,27 @@ if [ -z "$WM_PROJECT" ]; then
   exit 1
 fi
 
+# whether to enable the turbomachinery mode, turbomachinery mode need the mixingplane model
+ENABLE_TURBOMACHINERY=0
+
+for arg in "$@"
+do
+  case $arg in
+    # turbomachinery mode
+    -turbo|--turbomachinery)
+      ENABLE_TURBOMACHINERY=1
+      echo "enable turbomachinery mode."
+      shift
+      ;;
+    *)
+      echo "unknown: $arg."
+      shift
+      ;;
+  esac
+done
+
+export ENABLE_TURBOMACHINERY
+
 function makeDAFoam()
 { 
   # the script will exit if there is any error
