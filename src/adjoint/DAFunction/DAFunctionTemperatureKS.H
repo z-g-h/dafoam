@@ -40,6 +40,9 @@ protected:
     scalar coeffKS_;
     bool isGrad_;
 
+    scalar normalValue_;
+    word normalMode_;
+
 public:
     TypeName("temperatureKS");
     // Constructors

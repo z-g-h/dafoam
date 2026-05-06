@@ -32,6 +32,12 @@ DAFunctionTemperatureKS::DAFunctionTemperatureKS(
 
     functionDict_.readEntry<scalar>("coeffKS", coeffKS_);
     isGrad_ = functionDict_.lookupOrDefault<bool>("isGrad", false);
+    normalMode_ = functionDict_.lookupOrDefault<word>("normalMode", "auto");
+
+    if (normalMode_ == "fixed")
+    {
+        functionDict_.readEntry<scalar>("normalValue", normalValue_);
+    }
 }
 
 /// calculate the value of objective function
@@ -55,8 +61,19 @@ scalar DAFunctionTemperatureKS::calcFunction()
     }
 
     scalar maxValue = 0;
-    scalar tmpMaxValue = gMax(tmpField);
-    assignValueCheckAD(maxValue, tmpMaxValue);
+    if (normalMode_ == "auto")
+    {
+        scalar tmpMaxValue = gMax(tmpField);
+        assignValueCheckAD(maxValue, tmpMaxValue);
+    }
+    else if (normalMode_ == "fixed")
+    {
+        assignValueCheckAD(maxValue, normalValue_);
+    }
+    else
+    {
+        FatalErrorIn(" ") << "KS function normalMode must be auto or fixed! " << abort(FatalError);
+    }
 
     scalar objValTmp = 0.0;
     forAll(cellSources_, idxI)
