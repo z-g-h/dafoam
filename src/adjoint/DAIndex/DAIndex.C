@@ -171,7 +171,7 @@ DAIndex::DAIndex(
             else if (mesh_.boundaryMesh()[patchI].type() == "cyclicAMI" or mesh_.boundaryMesh()[patchI].type() == "mixingPlane")
             {
                 isCoupledFace[faceIdx] = 2;
-                nLocalFieldCoupledBFaces++;                
+                nLocalFieldCoupledBFaces++;
             }
             faceIdx++;
         }
@@ -217,6 +217,42 @@ void DAIndex::calcStateLocalIndexOffset(HashTable<label>& offset)
     */
 
     word adjStateOrdering = daOption_.getOption<word>("adjStateOrdering");
+
+    /*
+     * Important:
+     * Build faceOwner for both "state" and "cell" ordering.
+     *
+     * Previously this was only done inside the "cell" branch. That means
+     * adjStateOrdering="cell" touched mesh_.owner() and boundary faceCells(),
+     * while adjStateOrdering="state" did not. In parallel runs, this can lead to
+     * ordering-dependent lazy mesh-addressing initialization behavior.
+     *
+     * Moving this common mesh-addressing initialization outside the branch makes
+     * "state" and "cell" consistent.
+     */
+
+    faceOwner.setSize(nLocalFaces);
+
+    const UList<label>& internalFaceOwner = mesh_.owner();
+
+    forAll(faceOwner, idxI)
+    {
+        if (idxI < nLocalInternalFaces)
+        {
+            faceOwner[idxI] = internalFaceOwner[idxI];
+        }
+        else
+        {
+            label relIdx = idxI - nLocalInternalFaces;
+            label patchIdx = bFacePatchI[relIdx];
+            label faceIdx = bFaceFaceI[relIdx];
+
+            const UList<label>& pFaceCells =
+                mesh_.boundaryMesh()[patchIdx].faceCells();
+
+            faceOwner[idxI] = pFaceCells[faceIdx];
+        }
+    }
 
     if (adjStateOrdering == "state")
     {
@@ -314,29 +350,10 @@ void DAIndex::calcStateLocalIndexOffset(HashTable<label>& offset)
             }
         }
 
-        // We also need a few more offsets
+        // We also need a few more offsets for cell-by-cell ordering.
 
-        // calculate faceOwner
-        faceOwner.setSize(nLocalFaces);
-        const UList<label>& internalFaceOwner = mesh_.owner(); // these only include internal faces owned cellI
-        forAll(faceOwner, idxI)
-        {
-            if (idxI < nLocalInternalFaces)
-            {
-                faceOwner[idxI] = internalFaceOwner[idxI];
-            }
-            else
-            {
-                label relIdx = idxI - nLocalInternalFaces;
-                label patchIdx = bFacePatchI[relIdx];
-                label faceIdx = bFaceFaceI[relIdx];
-                const UList<label>& pFaceCells = mesh_.boundaryMesh()[patchIdx].faceCells();
-                faceOwner[idxI] = pFaceCells[faceIdx];
-            }
-        }
-
-        // Calculate the cell owned face index. Note: we can't use mesh.cells here since it will have
-        // duplicated face indices
+        // Calculate the cell-owned face index. Note: we can't use mesh.cells()
+        // here since it will have duplicated face indices.
         List<List<label>> cellOwnedFaces;
         cellOwnedFaces.setSize(nLocalCells);
         forAll(faceOwner, idxI)
