@@ -56,7 +56,7 @@ Foam::aeroThermalCoupleFvPatchScalarField::
       Tn_(),
       Cn_(),
       discipline_(dict.lookupOrDefault<word>("discipline", "aero")),
-      distanceMode_(dict.lookupOrDefault<word>("distanceMode", "defualt"))
+      distanceMode_(dict.lookupOrDefault<word>("distanceMode", "default"))
 {
 
     Tn_ = scalarField("Tn", dict, p.size());

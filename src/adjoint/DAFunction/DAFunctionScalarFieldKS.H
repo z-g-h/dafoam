@@ -8,7 +8,7 @@
 
     Options template:
             "maxTKS" : {
-            "type"         : "temperatureKS",
+            "type"         : "scalarFieldKS",
             "source"       : "allCells",
             "coeffKS"      : 50,
             "isGrad"       : False,
@@ -16,8 +16,8 @@
             
 \*---------------------------------------------------------------------------*/
 
-#ifndef DAFunctionTemperatureKS_H
-#define DAFunctionTemperatureKS_H
+#ifndef DAFunctionScalarFieldKS_H
+#define DAFunctionScalarFieldKS_H
 
 #include "DAFunction.H"
 #include "addToRunTimeSelectionTable.H"
@@ -28,10 +28,10 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-      Class DAFunctionTemperatureKS Declaration
+      Class DAFunctionScalarFieldKS Declaration
 \*---------------------------------------------------------------------------*/
 
-class DAFunctionTemperatureKS
+class DAFunctionScalarFieldKS
     : public DAFunction
 {
 
@@ -43,12 +43,15 @@ protected:
     scalar normalValue_;
     word normalMode_;
 
+    /// name of the variable
+    word fieldName_;
+
 public:
-    TypeName("temperatureKS");
+    TypeName("scalarFieldKS");
     // Constructors
 
     //- Construct from components
-    DAFunctionTemperatureKS(
+    DAFunctionScalarFieldKS(
         const fvMesh& mesh,
         const DAOption& daOption,
         const DAModel& daModel,
@@ -56,7 +59,7 @@ public:
         const word functionName);
 
     //- Destructor
-    virtual ~DAFunctionTemperatureKS()
+    virtual ~DAFunctionScalarFieldKS()
     {
     }
 

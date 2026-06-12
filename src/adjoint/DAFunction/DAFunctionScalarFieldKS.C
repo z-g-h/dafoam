@@ -5,18 +5,18 @@
 
 \*---------------------------------------------------------------------------*/
 
-#include "DAFunctionTemperatureKS.H"
+#include "DAFunctionScalarFieldKS.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-defineTypeNameAndDebug(DAFunctionTemperatureKS, 0);
-addToRunTimeSelectionTable(DAFunction, DAFunctionTemperatureKS, dictionary);
+defineTypeNameAndDebug(DAFunctionScalarFieldKS, 0);
+addToRunTimeSelectionTable(DAFunction, DAFunctionScalarFieldKS, dictionary);
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-DAFunctionTemperatureKS::DAFunctionTemperatureKS(
+DAFunctionScalarFieldKS::DAFunctionScalarFieldKS(
     const fvMesh& mesh,
     const DAOption& daOption,
     const DAModel& daModel,
@@ -30,10 +30,13 @@ DAFunctionTemperatureKS::DAFunctionTemperatureKS(
         functionName)
 {
 
-    functionDict_.readEntry<scalar>("coeffKS", coeffKS_);
-    isGrad_ = functionDict_.lookupOrDefault<bool>("isGrad", false);
-    normalMode_ = functionDict_.lookupOrDefault<word>("normalMode", "auto");
+    functionDict_.readEntry<word>("fieldName", fieldName_);
 
+    functionDict_.readEntry<scalar>("coeffKS", coeffKS_);
+
+    isGrad_ = functionDict_.lookupOrDefault<bool>("isGrad", false);
+
+    normalMode_ = functionDict_.lookupOrDefault<word>("normalMode", "auto");
     if (normalMode_ == "fixed")
     {
         functionDict_.readEntry<scalar>("normalValue", normalValue_);
@@ -41,23 +44,33 @@ DAFunctionTemperatureKS::DAFunctionTemperatureKS(
 }
 
 /// calculate the value of objective function
-scalar DAFunctionTemperatureKS::calcFunction()
+scalar DAFunctionScalarFieldKS::calcFunction()
 {
     /*
     Description:
-        Calculate the maximal Temperature aggregated using the KS function
-        where the KS function KS(x) = 1/coeffKS * ln( sum[exp(coeffKS*x_i)] ) 
+        Calculate the maximal field aggregated using the KS function
+        where the KS function KS(x) = 1/coeffKS * ln( sum[w * exp(coeffKS*x_i)] ) 
+        w is a volume weights which is wi = Vi / sum(Vi)
     */
 
     scalar functionValue = 0.0;
 
     const objectRegistry& db = mesh_.thisDb();
-    const volScalarField& T = db.lookupObject<volScalarField>("T");
+    const volScalarField& field = db.lookupObject<volScalarField>(fieldName_);
 
-    volScalarField tmpField = T;
+    scalar totalVol = 0.0;
+    forAll(cellSources_, idxI)
+    {
+        const label& cellI = cellSources_[idxI];
+        totalVol += mesh_.V()[cellI];
+    }
+
+    reduce(totalVol, sumOp<scalar>());
+
+    volScalarField tmpField = field;
     if (isGrad_)
     {
-        tmpField = mag(fvc::grad(T)) * dimensionedScalar("unitLength", dimLength, 1.0);
+        tmpField = mag(fvc::grad(field)) * dimensionedScalar("unitLength", dimLength, 1.0);
     }
 
     scalar maxValue = 0;
@@ -79,7 +92,7 @@ scalar DAFunctionTemperatureKS::calcFunction()
     forAll(cellSources_, idxI)
     {
         const label& cellI = cellSources_[idxI];
-        objValTmp += exp(coeffKS_ * scale_ * (tmpField[cellI] - maxValue));
+        objValTmp += exp(coeffKS_ * scale_ * (tmpField[cellI] - maxValue)) * mesh_.V()[cellI];
 
         if (objValTmp > 1e200)
         {
@@ -90,6 +103,9 @@ scalar DAFunctionTemperatureKS::calcFunction()
 
     // need to reduce the sum of force across all processors
     reduce(objValTmp, sumOp<scalar>());
+
+    // weight by total Volume;
+    objValTmp /= totalVol;
 
     functionValue = log(objValTmp) / coeffKS_ + scale_ * maxValue;
 

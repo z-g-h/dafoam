@@ -45,7 +45,7 @@ DAFunction/DAFunctionLocation.C
 DAFunction/DAFunctionMeshQualityKS.C
 DAFunction/DAFunctionVonMisesStressKS.C
 DAFunction/DAFunctionResidualNorm.C
-DAFunction/DAFunctionTemperatureKS.C
+DAFunction/DAFunctionScalarFieldKS.C
 DAFunction/DAFunctionEntropyGeneration.C
 DAFunction/DAFunctionFieldMax.C
 
