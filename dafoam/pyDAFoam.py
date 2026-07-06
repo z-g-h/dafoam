@@ -608,6 +608,7 @@ class DAOPTION(object):
             "method": "scotch",
             "simpleCoeffs": {"n": [2, 2, 1], "delta": 0.001},
             "kahipCoeffs": {"config": "fast", "imbalance": 0.01},
+            "manualCoeffs" : {"dataFile": "cellDecomposition"},
             "preservePatches": ["None"],
             "singleProcessorFaceSets": ["None"],
             "args": ["None"],
@@ -2344,6 +2345,10 @@ class PYDAFOAM(object):
             f.write("{ \n")
             f.write("    n                  (%d %d %d);\n" % (n[0], n[1], n[2]))
             f.write("    delta              %g;\n" % decomDict["simpleCoeffs"]["delta"])
+            f.write("} \n")
+            f.write("manualCoeffs \n")
+            f.write("{ \n")
+            f.write("    dataFile                 \"%s\";\n" % decomDict["manualCoeffs"]["dataFile"])
             f.write("} \n")
             f.write("\n")
             f.write("distributed            false;\n")
