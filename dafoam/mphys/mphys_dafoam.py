@@ -44,6 +44,18 @@ class DAFoamBuilder(Builder):
         # thermal coupling defaults to false
         self.thermal_coupling = False
 
+        # One-way outputs may be requested in an aerothermal scenario without
+        # turning structural displacement feedback on. Detect them directly
+        # from outputInfo instead of overloading the scenario flag.
+        self.force_output = False
+        self.point_temperature_output = False
+        for output_data in self.options.get("outputInfo", {}).values():
+            components = output_data.get("components", [])
+            if "forceCoupling" in components:
+                self.force_output = True
+            if "thermalStressCoupling" in components:
+                self.point_temperature_output = True
+
         # the directory to run this case in, default is the current directory
         self.run_directory = run_directory
 
@@ -88,6 +100,8 @@ class DAFoamBuilder(Builder):
             use_warper=self.warp_in_solver,
             struct_coupling=self.struct_coupling,
             thermal_coupling=self.thermal_coupling,
+            force_output=self.force_output,
+            point_temperature_output=self.point_temperature_output,
             run_directory=self.run_directory,
         )
         return dafoam_group
@@ -132,6 +146,8 @@ class DAFoamGroup(Group):
         self.options.declare("struct_coupling", default=False)
         self.options.declare("use_warper", default=True)
         self.options.declare("thermal_coupling", default=False)
+        self.options.declare("force_output", default=False)
+        self.options.declare("point_temperature_output", default=False)
         self.options.declare("run_directory", default="")
 
     def setup(self):
@@ -140,6 +156,8 @@ class DAFoamGroup(Group):
         self.struct_coupling = self.options["struct_coupling"]
         self.use_warper = self.options["use_warper"]
         self.thermal_coupling = self.options["thermal_coupling"]
+        self.force_output = self.options["force_output"]
+        self.point_temperature_output = self.options["point_temperature_output"]
         self.run_directory = self.options["run_directory"]
         self.discipline = self.DASolver.getOption("discipline")
 
@@ -163,12 +181,12 @@ class DAFoamGroup(Group):
             promotes_outputs=["%s_states" % self.discipline],
         )
 
-        if self.struct_coupling:
+        if self.struct_coupling or self.force_output:
             self.add_subsystem(
                 "force",
                 DAFoamForces(solver=self.DASolver),
                 promotes_inputs=["%s_vol_coords" % self.discipline, "%s_states" % self.discipline],
-                promotes_outputs=["f_aero"],
+                promotes_outputs=["f_aero","x_force"],
             )
 
         if self.thermal_coupling:
@@ -176,6 +194,14 @@ class DAFoamGroup(Group):
                 "get_%s" % self.discipline,
                 DAFoamThermal(solver=self.DASolver),
                 promotes_inputs=["*"],
+                promotes_outputs=["*"],
+            )
+
+        if self.point_temperature_output:
+            self.add_subsystem(
+                "point_temperature",
+                DAFoamPointTemperature(solver=self.DASolver),
+                promotes_inputs=[self.discipline + "_vol_coords", self.discipline + "_states"],
                 promotes_outputs=["*"],
             )
 
@@ -649,7 +675,7 @@ class DAFoamMesh(ExplicitComponent):
 
     def mphys_get_surface_mesh(self):
         return self.x_a0
-    
+
     def mphys_get_bufferSurface_mesh(self):
         return self.DASolver.getBufferSurfaceCoordinates(self.DASolver.designSurfacesGroup).flatten(order="C")
 
@@ -952,6 +978,100 @@ class DAFoamThermal(ExplicitComponent):
                 d_inputs[self.volCoordName] += product
 
 
+class DAFoamPointTemperature(ExplicitComponent):
+    """Output CHT-solid point temperature increments for thermoelastic coupling.
+
+    The point order is exactly the local OpenFOAM volume-mesh point order used
+    by ``<discipline>_vol_coords``. For a conformal DAFoam-solid/TACS mesh this
+    gives a coordinate-based transfer. The C++ output may subtract a
+    constant ``TRef`` so the exported field is ``Delta T = T - TRef``.
+    """
+
+    def initialize(self):
+        self.options.declare("solver", recordable=False)
+
+    def setup(self):
+        self.DASolver = self.options["solver"]
+        self.discipline = self.DASolver.getOption("discipline")
+        self.stateName = "%s_states" % self.discipline
+        self.volCoordName = "%s_vol_coords" % self.discipline
+        self.coordOutputName = "x_%s_points" % self.discipline
+
+        self.add_input(self.volCoordName, distributed=True, shape_by_conn=True, tags=["mphys_coupling"])
+        self.add_input(self.stateName, distributed=True, shape_by_conn=True, tags=["mphys_coupling"])
+
+        self.outputName = None
+        outputDict = self.DASolver.getOption("outputInfo")
+        for outputName, outputData in outputDict.items():
+            if "thermalStressCoupling" in outputData.get("components", []):
+                self.outputName = outputName
+                self.outputType = outputData["type"]
+                self.outputSize = self.DASolver.solver.getOutputSize(outputName, self.outputType)
+                distributed = self.DASolver.solver.getOutputDistributed(outputName, self.outputType)
+                self.add_output(outputName, distributed=distributed, shape=self.outputSize, tags=["mphys_coupling"])
+                self.add_output(
+                    self.coordOutputName, distributed=True, shape=3 * self.outputSize, tags=["mphys_coordinates"]
+                )
+                break
+
+        if self.outputName is None:
+            raise AnalysisError("No outputInfo entry with component 'thermalStressCoupling' was found.")
+
+    def compute(self, inputs, outputs):
+        self.DASolver.setStates(inputs[self.stateName])
+        self.DASolver.setVolCoords(inputs[self.volCoordName])
+
+        point_temperature = np.zeros(self.outputSize)
+        self.DASolver.solver.calcOutput(self.outputName, self.outputType, point_temperature)
+        outputs[self.outputName] = point_temperature
+        outputs[self.coordOutputName] = inputs[self.volCoordName]
+
+    def compute_jacvec_product(self, inputs, d_inputs, d_outputs, mode):
+        if mode == "fwd":
+            om.issue_warning(
+                "DAFoam point-temperature forward mode is not implemented.",
+                prefix="",
+                stacklevel=2,
+                category=om.OpenMDAOWarning,
+            )
+            return
+
+        if self.coordOutputName in d_outputs and self.volCoordName in d_inputs:
+            d_inputs[self.volCoordName] += d_outputs[self.coordOutputName]
+
+        if self.outputName not in d_outputs:
+            return
+
+        seeds = d_outputs[self.outputName]
+        if self.stateName in d_inputs:
+            jacInput = inputs[self.stateName]
+            product = np.zeros_like(jacInput)
+            self.DASolver.solverAD.calcJacTVecProduct(
+                self.stateName,
+                "stateVar",
+                jacInput,
+                self.outputName,
+                self.outputType,
+                seeds,
+                product,
+            )
+            d_inputs[self.stateName] += product
+
+        if self.volCoordName in d_inputs:
+            jacInput = inputs[self.volCoordName]
+            product = np.zeros_like(jacInput)
+            self.DASolver.solverAD.calcJacTVecProduct(
+                self.volCoordName,
+                "volCoord",
+                jacInput,
+                self.outputName,
+                self.outputType,
+                seeds,
+                product,
+            )
+            d_inputs[self.volCoordName] += product
+
+
 class DAFoamFaceCoords(ExplicitComponent):
     """
     Calculate coupling surface coordinates based on volume coordinates
@@ -1031,7 +1151,22 @@ class DAFoamForces(ExplicitComponent):
                 self.outputName = outputName
                 self.outputType = outputDict[outputName]["type"]
                 outputSize = self.DASolver.solver.getOutputSize(self.outputName, self.outputType)
-                self.add_output("f_aero", distributed=True, shape=outputSize, tags=["mphys_coupling"])
+                self.forceName = "f_aero"
+                self.add_output(self.forceName, distributed=True, shape=outputSize, tags=["mphys_coupling"])
+
+                # Coordinates in the same patch family set. They are used by
+                # the conformal pressure-load mapper supplied with this patch.
+                self.forceCoordName = "x_force"
+                forcePatches = sorted(outputDict[outputName]["patches"])
+                self.forcePointIndices = []
+                for patchName in forcePatches:
+                    self.forcePointIndices.extend(self.DASolver.boundaries[patchName]["indicesRed"])
+                self.forcePointIndices = np.asarray(self.forcePointIndices, dtype=np.intc)
+                if 3 * len(self.forcePointIndices) != outputSize:
+                    raise AnalysisError(
+                        "Patch-point coordinate count does not match " "DAOutputForceCoupling output size."
+                    )
+                self.add_output(self.forceCoordName, distributed=True, shape=outputSize, tags=["mphys_coordinates"])
                 break
 
     def compute(self, inputs, outputs):
@@ -1039,11 +1174,14 @@ class DAFoamForces(ExplicitComponent):
         self.DASolver.setStates(inputs[self.stateName])
         self.DASolver.setVolCoords(inputs[self.volCoordName])
 
-        forces = np.zeros_like(outputs["f_aero"])
+        forces = np.zeros_like(outputs[self.forceName])
 
         self.DASolver.solver.calcOutput(self.outputName, self.outputType, forces)
 
-        outputs["f_aero"] = forces
+        outputs[self.forceName] = forces
+
+        volCoords = np.asarray(inputs[self.volCoordName]).reshape((-1, 3))
+        outputs[self.forceCoordName] = volCoords[self.forcePointIndices].flatten()
 
         # print out the total forces. They shoud be consistent with the primal's print out
         forcesV = forces.reshape((-1, 3))
@@ -1072,9 +1210,14 @@ class DAFoamForces(ExplicitComponent):
                 category=om.OpenMDAOWarning,
             )
             return
+        
+        if self.forceCoordName in d_outputs and self.volCoordName in d_inputs:
+            coordSeed = np.asarray(d_outputs[self.forceCoordName]).reshape((-1, 3))
+            volSeed = d_inputs[self.volCoordName].reshape((-1, 3))
+            np.add.at(volSeed, self.forcePointIndices, coordSeed)
 
-        if "f_aero" in d_outputs:
-            seeds = d_outputs["f_aero"]
+        if self.forceName in d_outputs:
+            seeds = d_outputs[self.forceName]
 
             if self.stateName in d_inputs:
                 jacInput = inputs[self.stateName]

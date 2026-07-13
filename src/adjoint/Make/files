@@ -73,6 +73,7 @@ DAOutput/DAOutputResidual.C
 DAOutput/DAOutputFunction.C
 DAOutput/DAOutputThermalCoupling.C
 DAOutput/DAOutputForceCoupling.C
+DAOutput/DAOutputPointTemperature.C
 
 DAModel/DAModel.C
 DAModel/DATurbulenceModel/DATurbulenceModel.C

@@ -41,6 +41,10 @@ DAFunctionScalarFieldKS::DAFunctionScalarFieldKS(
     {
         functionDict_.readEntry<scalar>("normalValue", normalValue_);
     }
+
+    ksAggregationType_ = functionDict_.lookupOrDefault<word>("ksAggregationType", "continuous");
+
+    alpha_ = functionDict_.lookupOrDefault<scalar>("alpha", 1.0);
 }
 
 /// calculate the value of objective function
@@ -57,15 +61,6 @@ scalar DAFunctionScalarFieldKS::calcFunction()
 
     const objectRegistry& db = mesh_.thisDb();
     const volScalarField& field = db.lookupObject<volScalarField>(fieldName_);
-
-    scalar totalVol = 0.0;
-    forAll(cellSources_, idxI)
-    {
-        const label& cellI = cellSources_[idxI];
-        totalVol += mesh_.V()[cellI];
-    }
-
-    reduce(totalVol, sumOp<scalar>());
 
     volScalarField tmpField = field;
     if (isGrad_)
@@ -92,12 +87,25 @@ scalar DAFunctionScalarFieldKS::calcFunction()
     forAll(cellSources_, idxI)
     {
         const label& cellI = cellSources_[idxI];
-        objValTmp += exp(coeffKS_ * scale_ * (tmpField[cellI] - maxValue)) * mesh_.V()[cellI];
+        if (ksAggregationType_ == "continuous")
+        {
+            objValTmp += exp(coeffKS_ * scale_ * (tmpField[cellI] - maxValue)) * mesh_.V()[cellI];
+        }
+        else if (ksAggregationType_ == "discrete")
+        {
+            objValTmp += exp(coeffKS_ * scale_ * (tmpField[cellI] - maxValue));
+        }
+        else
+        {
+            FatalErrorIn(" ") << "KS function ksAggregationType must be continuous or discrete! " << abort(FatalError);
+        }
 
         if (objValTmp > 1e200)
         {
-            FatalErrorIn(" ") << "KS function summation term too large! "
-                              << "Reduce coeffKS! " << abort(FatalError);
+            std::cout << "Warning! procI: " << Pstream::myProcNo() << "\n" << 
+                "KS function summation term too large! Reduce coeffKS!  " << std::endl;
+            std::cout << "bounded value in this proc to 1e200" << std::endl;
+            objValTmp = 1e200;
         }
     }
 
@@ -105,7 +113,7 @@ scalar DAFunctionScalarFieldKS::calcFunction()
     reduce(objValTmp, sumOp<scalar>());
 
     // weight by total Volume;
-    objValTmp /= totalVol;
+    objValTmp /= alpha_;
 
     functionValue = log(objValTmp) / coeffKS_ + scale_ * maxValue;
 

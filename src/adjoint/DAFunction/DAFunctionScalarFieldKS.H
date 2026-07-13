@@ -12,6 +12,7 @@
             "source"       : "allCells",
             "coeffKS"      : 50,
             "isGrad"       : False,
+            "ksAggregationType": "continuous"/"discrete",
             "scale"        : 1.0}
             
 \*---------------------------------------------------------------------------*/
@@ -45,6 +46,12 @@ protected:
 
     /// name of the variable
     word fieldName_;
+
+    // ksAggregationType "continuous" or "discrete"
+    word ksAggregationType_;
+
+    /// log coeff
+    scalar alpha_;
 
 public:
     TypeName("scalarFieldKS");
