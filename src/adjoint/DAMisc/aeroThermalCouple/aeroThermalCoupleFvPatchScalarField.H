@@ -25,22 +25,24 @@ Class
     Foam::aeroThermalCoupleFvPatchScalarField
 
 Description
-    This boundary condition applies a couple for aero and thermal 
+    Mixed CHT interface boundary condition for aero and thermal solvers.
 
     where:
     \vartable
         Tn  | neighbour temperature
-        Cn  | neighbour Heat resistance parameter 
+        Cn  | neighbour conductance kappa_neighbour/d_neighbour
     \endvartable
 
-    The thermal conductivity \c kappa is use polynomial read from solidProperties.
+    The local conductance and valueFraction are recomputed in updateCoeffs().
+    The solver discipline and wall-distance method are read directly from the
+    registered DAOption object.
 
 Usage
     \table
     Property    | Description                                       | Required | Default
     Tn          | neighbour temperature                             | yes |
-    Cn          | neighbour Heat resistance parameter               | yes |
-    discipline | owner solver type                                 | yes |
+    Cn          | neighbour conductance                             | yes |
+    value       | initial patch temperature                         | yes |
     \endtable
 
     Example of the boundary condition specification:
@@ -51,7 +53,6 @@ Usage
 
         Tn              uniform 300.0;
         Cn              uniform 1000000.0;
-        discipline      aero;
         value           $internalField;
     }
     \endverbatim
@@ -88,14 +89,8 @@ private:
     //- neighbour temperature
     scalarField Tn_;
 
-    //- neighbour Heat resistance parameter
+    //- Neighbour conductance Cn = kappa_neighbour/d_neighbour
     scalarField Cn_;
-
-    //- tag for owner solver type : aero/thermal
-    word discipline_;
-
-    //- tag for distance type: default/ daCustom, this will be reset to DAFOAM options
-    word distanceMode_;
 
 public:
     //- Runtime type information
@@ -192,26 +187,6 @@ public:
     virtual const scalarField& refCn() const
     {
         return Cn_;
-    }
-
-    virtual word& refDiscipline()
-    {
-        return discipline_;
-    }
-
-    virtual const word& refDiscipline() const
-    {
-        return discipline_;
-    }
-
-    virtual word& refDistanceMode()
-    {
-        return distanceMode_;
-    }
-
-    virtual const word& refDistanceMode() const
-    {
-        return distanceMode_;
     }
 
     // I-O

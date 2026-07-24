@@ -1,27 +1,23 @@
 /*---------------------------------------------------------------------------*\
-
     DAFoam  : Discrete Adjoint with OpenFOAM
     Version : v4
 
     Description:
-        Child class for thermal variables in CHT.
+        Child class for CHT coupling inputs.
 
-        Assign the thermal BC values to all of the faces on the conjugate heat 
-        transfer patches. 
+        The input layout is
 
-        We assume the conjugate coupling patches are of mixed type, so we need to assign
-        refValue = neighbour near wall temperature
-        refGrad = 0
-        valueFraction = neighKDeltaCoeffs / ( neighKDeltaCoeffs + myKDeltaCoeffs)
+            [Tn for all coupling faces, Cn for all coupling faces],
 
-        NOTE: we have two separate variables saved in the thermal array. 
-        One is the neighbour near wall temperature and the other is the neighbour kappa/d. 
-        So the size of thermal array is 2 * nCouplingFaces
-        NOTE: this function can be called by either fluid or solid domain!
+        where Cn = kappa_neighbour/d_neighbour. This class only transfers Tn
+        and Cn to aeroThermalCoupleFvPatchScalarField. The boundary condition
+        computes refValue, refGrad, and
 
-        This conjugate heat transfer coupling uses the OpenFOAM's implementation in
-        turbulentTemperatureCoupledBaffleMixed.C
+            valueFraction = Cn / (Cn + Clocal)
 
+        whenever T.correctBoundaryConditions() is evaluated. Keeping this
+        derived calculation inside the boundary condition allows the AD tape
+        to record the local state and mesh dependencies of Clocal.
 \*---------------------------------------------------------------------------*/
 
 #ifndef DAInputThermalCoupling_H
@@ -52,11 +48,7 @@ protected:
     /// the total face number for all the patches_ owned by this processor
     label size_;
 
-    /// whether this is flow or solid
-    word discipline_;
-
-    /// if calculating wallHeatFlux by OpenFOAMs snGrad() or DAFOAM's custom (daCustom) formulation
-    word distanceMode_;
+    /// for distanceMode and discipline is get from daoptions directly.
 
 public:
     TypeName("thermalCouplingInput");

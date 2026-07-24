@@ -27,6 +27,7 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "fvPatchFieldMapper.H"
 #include "volFields.H"
+#include "DAOption.H"
 #include "DAModel.H"
 #include "thermodynamicConstants.H"
 
@@ -37,10 +38,8 @@ Foam::aeroThermalCoupleFvPatchScalarField::
         const fvPatch& p,
         const DimensionedField<scalar, volMesh>& iF)
     : mixedFvPatchScalarField(p, iF),
-      Tn_(),
-      Cn_(),
-      discipline_("aero"),
-      distanceMode_("default")
+      Tn_(p.size(), 0.0),
+      Cn_(p.size(), 0.0)
 {
     refValue() = 0.0;
     refGrad() = 0.0;
@@ -54,9 +53,7 @@ Foam::aeroThermalCoupleFvPatchScalarField::
         const dictionary& dict)
     : mixedFvPatchScalarField(p, iF),
       Tn_(),
-      Cn_(),
-      discipline_(dict.lookupOrDefault<word>("discipline", "aero")),
-      distanceMode_(dict.lookupOrDefault<word>("distanceMode", "default"))
+      Cn_()
 {
 
     Tn_ = scalarField("Tn", dict, p.size());
@@ -88,9 +85,7 @@ Foam::aeroThermalCoupleFvPatchScalarField::
         const fvPatchFieldMapper& mapper)
     : mixedFvPatchScalarField(ptf, p, iF, mapper),
       Tn_(),
-      Cn_(),
-      discipline_(ptf.discipline_),
-      distanceMode_(ptf.distanceMode_)
+      Cn_()
 {
 
     Tn_.setSize(mapper.size());
@@ -105,9 +100,7 @@ Foam::aeroThermalCoupleFvPatchScalarField::
         const aeroThermalCoupleFvPatchScalarField& ewhftpsf)
     : mixedFvPatchScalarField(ewhftpsf),
       Tn_(ewhftpsf.Tn_),
-      Cn_(ewhftpsf.Cn_),
-      discipline_(ewhftpsf.discipline_),
-      distanceMode_(ewhftpsf.distanceMode_)
+      Cn_(ewhftpsf.Cn_)
 {
 }
 
@@ -117,9 +110,7 @@ Foam::aeroThermalCoupleFvPatchScalarField::
         const DimensionedField<scalar, volMesh>& iF)
     : mixedFvPatchScalarField(ewhftpsf, iF),
       Tn_(ewhftpsf.Tn_),
-      Cn_(ewhftpsf.Cn_),
-      discipline_(ewhftpsf.discipline_),
-      distanceMode_(ewhftpsf.distanceMode_)
+      Cn_(ewhftpsf.Cn_)
 {
 }
 
@@ -147,8 +138,7 @@ void Foam::aeroThermalCoupleFvPatchScalarField::rmap(
     Cn_.rmap(ewhftpsf.Cn_, addr);
 }
 
-/// @brief  now only support solid boundary
-/// TODO: add fluid
+/// @brief Recompute the mixed coefficient from transferred and local data.
 void Foam::aeroThermalCoupleFvPatchScalarField::updateCoeffs()
 {
     if (updated())
@@ -156,9 +146,32 @@ void Foam::aeroThermalCoupleFvPatchScalarField::updateCoeffs()
         return;
     }
 
+    // for decomposePar/reconstructPar/mapFields will not registered DAOption.
+    // for those tools, only remain the current mixed boundary coefficient.
+    if (!db().foundObject<DAOption>("DAOption"))
+    {
+        mixedFvPatchScalarField::updateCoeffs();
+        return;
+    }
+
+    // DAOption is registered in the mesh objectRegistry before solver fields
+    // are constructed. Keep discipline and distanceMode in one configuration
+    // source instead of duplicating them in every 0/T boundary dictionary.
+    const DAOption& daOption = db().lookupObject<DAOption>("DAOption");
+    const word discipline = daOption.getOption<word>("discipline");
+    const word distanceMode = daOption.getOption<word>("wallDistanceMethod");
+
+    if ( distanceMode != "default" && distanceMode != "daCustom")
+    {
+        FatalErrorInFunction
+            << "Unsupported wallDistanceMethod '" << distanceMode
+            << "'. Valid values are 'default' and 'daCustom'."
+            << abort(FatalError);
+    }
+
     // neighKDeltaCoeffs / ( neighKDeltaCoeffs + myKDeltaCoeffs)
     scalar deltaCoeffs = 0.0;
-    if (discipline_ == "aero")
+    if (discipline == "aero")
     {
         // for incompressible flow  Q = Cp * alphaEff * dT/dz, so kappa = Cp * alphaEff
         DATurbulenceModel& daTurb = const_cast<DATurbulenceModel&>(db().lookupObject<DATurbulenceModel>("DATurbulenceModel"));
@@ -173,11 +186,11 @@ void Foam::aeroThermalCoupleFvPatchScalarField::updateCoeffs()
 
             forAll(this->refValue(), faceI)
             {
-                if (distanceMode_ == "default")
+                if (distanceMode == "default")
                 {
                     deltaCoeffs = patch().deltaCoeffs()[faceI];
                 }
-                else if (distanceMode_ == "daCustom")
+                else if (distanceMode == "daCustom")
                 {
                     label nearWallCellIndex = this->patch().faceCells()[faceI];
                     vector c1 = this->patch().Cf()[faceI];
@@ -231,11 +244,11 @@ void Foam::aeroThermalCoupleFvPatchScalarField::updateCoeffs()
 
             forAll(this->refValue(), faceI)
             {
-                if (distanceMode_ == "default")
+                if (distanceMode == "default")
                 {
                     deltaCoeffs = patch().deltaCoeffs()[faceI];
                 }
-                else if (distanceMode_ == "daCustom")
+                else if (distanceMode == "daCustom")
                 {
                     label nearWallCellIndex = this->patch().faceCells()[faceI];
                     vector c1 = this->patch().Cf()[faceI];
@@ -252,18 +265,18 @@ void Foam::aeroThermalCoupleFvPatchScalarField::updateCoeffs()
             }
         }
     }
-    else if (discipline_ == "thermal")
+    else if (discipline == "thermal")
     {
         const volScalarField& kappa = db().lookupObject<volScalarField>("kappa");
         const fvPatchField<scalar>& kappaBF = kappa.boundaryField()[patch().index()];
 
         forAll(this->refValue(), faceI)
         {
-            if (distanceMode_ == "default")
+            if (distanceMode == "default")
             {
                 deltaCoeffs = patch().deltaCoeffs()[faceI];
             }
-            else if (distanceMode_ == "daCustom")
+            else if (distanceMode == "daCustom")
             {
                 label nearWallCellIndex = this->patch().faceCells()[faceI];
                 vector c1 = this->patch().Cf()[faceI];
@@ -279,8 +292,10 @@ void Foam::aeroThermalCoupleFvPatchScalarField::updateCoeffs()
     }
     else
     {
-        FatalErrorIn("DAInputThermalCoupling::run") << " discipline not valid! "
-                                                    << abort(FatalError);
+        FatalErrorInFunction
+            << "Unsupported discipline '" << discipline
+            << "'. Valid values are 'aero' and 'thermal'."
+            << abort(FatalError);
     }
 
     mixedFvPatchScalarField::updateCoeffs();
@@ -294,9 +309,6 @@ void Foam::aeroThermalCoupleFvPatchScalarField::write(
     Tn_.writeEntry("Tn", os);
 
     Cn_.writeEntry("Cn", os);
-
-    os.writeEntry("discipline", discipline_);
-    os.writeEntry("distanceMode", distanceMode_);
 
     refValue().writeEntry("refValue", os);
     refGrad().writeEntry("refGradient", os);
