@@ -117,6 +117,117 @@ void DAInputStateVar::run(const scalarList& input)
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+void DAInputStateVar::getJacobianInputProduct(
+    const scalarList& jacobianInput,
+    double* product)
+{
+    // Use the generic extraction/reduction behavior first, then apply the
+    // state-specific normalization that historically lived in DASolver.
+    DAInput::getJacobianInputProduct(jacobianInput, product);
+    normalizeJacobianInputProduct(product);
+}
+
+void DAInputStateVar::normalizeJacobianInputProduct(double* product)
+{
+#if defined(CODI_ADF) || defined(CODI_ADR)
+    dictionary normStateDict =
+        daOption_.getAllOptions().subDict("normalizeStates");
+
+    forAll(stateInfo_["volVectorStates"], idxI)
+    {
+        const word stateName = stateInfo_["volVectorStates"][idxI];
+
+        if (normStateDict.found(stateName))
+        {
+            scalar scalingFactor = normStateDict.getScalar(stateName);
+
+            forAll(mesh_.cells(), cellI)
+            {
+                for (label i = 0; i < 3; i++)
+                {
+                    label localIdx =
+                        daIndex_.getLocalAdjointStateIndex(
+                            stateName,
+                            cellI,
+                            i);
+                    product[localIdx] *= scalingFactor.getValue();
+                }
+            }
+        }
+    }
+
+    forAll(stateInfo_["volScalarStates"], idxI)
+    {
+        const word stateName = stateInfo_["volScalarStates"][idxI];
+
+        if (normStateDict.found(stateName))
+        {
+            scalar scalingFactor = normStateDict.getScalar(stateName);
+
+            forAll(mesh_.cells(), cellI)
+            {
+                label localIdx =
+                    daIndex_.getLocalAdjointStateIndex(stateName, cellI);
+                product[localIdx] *= scalingFactor.getValue();
+            }
+        }
+    }
+
+    forAll(stateInfo_["modelStates"], idxI)
+    {
+        const word stateName = stateInfo_["modelStates"][idxI];
+
+        if (normStateDict.found(stateName))
+        {
+            scalar scalingFactor = normStateDict.getScalar(stateName);
+
+            forAll(mesh_.cells(), cellI)
+            {
+                label localIdx =
+                    daIndex_.getLocalAdjointStateIndex(stateName, cellI);
+                product[localIdx] *= scalingFactor.getValue();
+            }
+        }
+    }
+
+    forAll(stateInfo_["surfaceScalarStates"], idxI)
+    {
+        const word stateName = stateInfo_["surfaceScalarStates"][idxI];
+
+        if (normStateDict.found(stateName))
+        {
+            scalar scalingFactor = normStateDict.getScalar(stateName);
+
+            forAll(mesh_.faces(), faceI)
+            {
+                label localIdx =
+                    daIndex_.getLocalAdjointStateIndex(stateName, faceI);
+
+                if (faceI < daIndex_.nLocalInternalFaces)
+                {
+                    scalar meshSf = mesh_.magSf()[faceI];
+                    product[localIdx] *=
+                        scalingFactor.getValue() * meshSf.getValue();
+                }
+                else
+                {
+                    label relIdx =
+                        faceI - daIndex_.nLocalInternalFaces;
+                    label patchIdx = daIndex_.bFacePatchI[relIdx];
+                    label patchFaceIdx = daIndex_.bFaceFaceI[relIdx];
+                    scalar meshSf =
+                        mesh_.magSf().boundaryField()[patchIdx][patchFaceIdx];
+                    product[localIdx] *=
+                        scalingFactor.getValue() * meshSf.getValue();
+                }
+            }
+        }
+    }
+#else
+    (void)product;
+#endif
+}
+
 } // End namespace Foam
 
 // ************************************************************************* //

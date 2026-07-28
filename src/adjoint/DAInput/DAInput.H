@@ -115,6 +115,36 @@ public:
     virtual label size() = 0;
 
     virtual label distributed() = 0;
+
+    // ---------------------------------------------------------------------
+    // Generic reverse-AD input interface.
+    //
+    // Most inputs use the physical input array directly, so the defaults
+    // below are equivalent to size(), run(), the historical DASolver input
+    // registration loop, and the historical gradient extraction loop.
+    // Inputs containing passive mappings or special post-processing may
+    // override these methods without adding input-specific logic to DASolver.
+    // ---------------------------------------------------------------------
+
+    /// Number of scalar entries allocated for reverse-AD tape input.
+    virtual label jacobianInputSize();
+
+    /// Number of allocated entries registered as CoDiPack tape inputs.
+    virtual label jacobianRegisteredInputSize();
+
+    /// Convert the physical input array to the representation recorded on tape.
+    virtual void setJacobianInputValues(
+        scalarList& jacobianInput,
+        const double* physicalInput);
+
+    /// Apply the input representation while recording or cleaning the tape.
+    virtual void runForJacobian(
+        const scalarList& jacobianInput);
+
+    /// Convert tape-input gradients to the physical Jacobian-vector product.
+    virtual void getJacobianInputProduct(
+        const scalarList& jacobianInput,
+        double* product);
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -6,6 +6,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "DAOutput.H"
+#include "Pstream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -99,6 +100,44 @@ autoPtr<DAOutput> DAOutput::New(
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+label DAOutput::jacobianOutputSize()
+{
+    return size();
+}
+
+label DAOutput::jacobianRegisteredOutputSize()
+{
+    return jacobianOutputSize();
+}
+
+void DAOutput::runForJacobian(scalarList& output)
+{
+    run(output);
+}
+
+void DAOutput::setJacobianOutputSeeds(
+    scalarList& output,
+    const double* seed)
+{
+#ifdef CODI_ADR
+    forAll(output, idxI)
+    {
+        // Distributed outputs have a physical seed on every processor.
+        // Serial outputs have already performed a reduction in run(), so only
+        // the master processor receives the seed.
+        if (distributed() || Pstream::master())
+        {
+            output[idxI].setGradient(seed[idxI]);
+        }
+    }
+#else
+    // This method is only used by DASolver::calcJacTVecProduct in CODI_ADR
+    // builds. Keep passive and forward builds source-compatible.
+    (void)output;
+    (void)seed;
+#endif
+}
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

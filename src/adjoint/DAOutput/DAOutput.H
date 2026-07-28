@@ -129,6 +129,29 @@ public:
     virtual label size() = 0;
 
     virtual label distributed() = 0;
+
+    // ---------------------------------------------------------------------
+    // Generic reverse-AD output interface.
+    //
+    // Most outputs use the physical output directly, so the defaults below
+    // are equivalent to size(), run(), and the historical DASolver seeding
+    // loop. Outputs containing a passive parallel operation may override
+    // these methods without adding output-specific logic to DASolver.
+    // ---------------------------------------------------------------------
+
+    /// Number of scalar entries allocated for reverse-AD tape output.
+    virtual label jacobianOutputSize();
+
+    /// Number of allocated entries registered as CoDiPack tape outputs.
+    virtual label jacobianRegisteredOutputSize();
+
+    /// Evaluate the output representation used while recording the tape.
+    virtual void runForJacobian(scalarList& output);
+
+    /// Convert physical output seeds to tape-output seeds.
+    virtual void setJacobianOutputSeeds(
+        scalarList& output,
+        const double* seed);
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

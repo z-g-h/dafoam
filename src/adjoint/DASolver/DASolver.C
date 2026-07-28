@@ -219,7 +219,7 @@ label DASolver::loop(Time& runTime)
         funcObj.end();
         daRegressionPtr_->writeFeatures();
         primalFinalTimeIndex_ = runTime.timeIndex();
-        return 0;        
+        return 0;
     }
     else if (t > endTime - 0.5 * deltaT)
     {
@@ -268,7 +268,7 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initRes << endl;
+                             << " dynInitPrimalRes: " << initRes << endl;
                     }
                 }
                 else
@@ -277,12 +277,11 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initRes << endl;
-                    }                    
+                             << " dynInitPrimalRes: " << initRes << endl;
+                    }
                 }
-
             }
-            else if (runTime.timeIndex() > runTime.startTimeIndex() +1)
+            else if (runTime.timeIndex() > runTime.startTimeIndex() + 1)
             {
                 daGlobalVarPtr_->dynPrimalRes = initRes;
             }
@@ -320,7 +319,7 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initResList[1] << endl;
+                             << " dynInitPrimalRes: " << initResList[1] << endl;
                     }
                 }
                 else
@@ -329,8 +328,8 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initResList[1] << endl;
-                    }                    
+                             << " dynInitPrimalRes: " << initResList[1] << endl;
+                    }
                 }
             }
             else if (runTime.timeIndex() > runTime.startTimeIndex() + 1)
@@ -1494,118 +1493,6 @@ void DASolver::initializeGlobalADTape4dRdWT(label isPC)
 #endif
 }
 
-void DASolver::normalizeJacTVecProduct(
-    const word inputName,
-    double* product)
-{
-
-#if defined(CODI_ADF) || defined(CODI_ADR)
-    /*
-    Description:
-        Normalize the jacobian vector product that has states as the input such as dFdW and dRdW
-    
-    Input/Output:
-
-        inputName: 
-        name of the input for the Jacobian, we normalize the product only if inputName=stateVar
-
-        product: 
-        jacobian vector product to be normalized. vecY = vecY * scalingFactor
-        the scalingFactor depends on states.
-        This is needed for the matrix-vector products in matrix-free adjoint
-
-    */
-
-    if (inputName == "stateVar")
-    {
-
-        dictionary normStateDict = daOptionPtr_->getAllOptions().subDict("normalizeStates");
-
-        forAll(stateInfo_["volVectorStates"], idxI)
-        {
-            const word stateName = stateInfo_["volVectorStates"][idxI];
-            // if normalized state not defined, skip
-            if (normStateDict.found(stateName))
-            {
-                scalar scalingFactor = normStateDict.getScalar(stateName);
-
-                forAll(meshPtr_->cells(), cellI)
-                {
-                    for (label i = 0; i < 3; i++)
-                    {
-                        label localIdx = daIndexPtr_->getLocalAdjointStateIndex(stateName, cellI, i);
-                        product[localIdx] *= scalingFactor.getValue();
-                    }
-                }
-            }
-        }
-
-        forAll(stateInfo_["volScalarStates"], idxI)
-        {
-            const word stateName = stateInfo_["volScalarStates"][idxI];
-            // if normalized state not defined, skip
-            if (normStateDict.found(stateName))
-            {
-                scalar scalingFactor = normStateDict.getScalar(stateName);
-
-                forAll(meshPtr_->cells(), cellI)
-                {
-                    label localIdx = daIndexPtr_->getLocalAdjointStateIndex(stateName, cellI);
-                    product[localIdx] *= scalingFactor.getValue();
-                }
-            }
-        }
-
-        forAll(stateInfo_["modelStates"], idxI)
-        {
-            const word stateName = stateInfo_["modelStates"][idxI];
-            // if normalized state not defined, skip
-            if (normStateDict.found(stateName))
-            {
-
-                scalar scalingFactor = normStateDict.getScalar(stateName);
-
-                forAll(meshPtr_->cells(), cellI)
-                {
-                    label localIdx = daIndexPtr_->getLocalAdjointStateIndex(stateName, cellI);
-                    product[localIdx] *= scalingFactor.getValue();
-                }
-            }
-        }
-
-        forAll(stateInfo_["surfaceScalarStates"], idxI)
-        {
-            const word stateName = stateInfo_["surfaceScalarStates"][idxI];
-            // if normalized state not defined, skip
-            if (normStateDict.found(stateName))
-            {
-                scalar scalingFactor = normStateDict.getScalar(stateName);
-
-                forAll(meshPtr_->faces(), faceI)
-                {
-                    label localIdx = daIndexPtr_->getLocalAdjointStateIndex(stateName, faceI);
-
-                    if (faceI < daIndexPtr_->nLocalInternalFaces)
-                    {
-                        scalar meshSf = meshPtr_->magSf()[faceI];
-                        product[localIdx] *= scalingFactor.getValue() * meshSf.getValue();
-                    }
-                    else
-                    {
-                        label relIdx = faceI - daIndexPtr_->nLocalInternalFaces;
-                        label patchIdx = daIndexPtr_->bFacePatchI[relIdx];
-                        label faceIdx = daIndexPtr_->bFaceFaceI[relIdx];
-                        scalar meshSf = meshPtr_->magSf().boundaryField()[patchIdx][faceIdx];
-                        product[localIdx] *= scalingFactor.getValue() * meshSf.getValue();
-                    }
-                }
-            }
-        }
-    }
-
-#endif
-}
-
 void DASolver::setSolverInput(
     const word inputName,
     const word inputType,
@@ -1795,79 +1682,47 @@ void DASolver::calcJacTVecProduct(
             daResidualPtr_(),
             daFunctionPtrList_));
 
-    label inputSize = daInput->size();
-    label outputSize = daOutput->size();
+    label inputSize = daInput->jacobianInputSize();
+    label nRegisteredInputs = daInput->jacobianRegisteredInputSize();
+    label outputSize = daOutput->jacobianOutputSize();
+    label nRegisteredOutputs = daOutput->jacobianRegisteredOutputSize();
 
     // create input and output lists
     scalarList inputList(inputSize, 0.0);
     scalarList outputList(outputSize, 0.0);
 
-    // assign the input array to the input list.
-    // Note: we need to use scalarList for AD
-    forAll(inputList, idxI)
-    {
-        inputList[idxI] = input[idxI];
-    }
+    // Let the input convert physical values to its tape representation.
+    daInput->setJacobianInputValues(inputList, input);
 
     // reset tape
     this->globalADTape_.reset();
     // activate tape, start recording
     this->globalADTape_.setActive();
     // register input
-    forAll(inputList, idxI)
+    for (label idxI = 0; idxI < nRegisteredInputs; idxI++)
     {
         this->globalADTape_.registerInput(inputList[idxI]);
     }
-    // call daInput->run to assign inputList to OF variables
-    daInput->run(inputList);
+    // Apply the input representation used for reverse-AD recording.
+    daInput->runForJacobian(inputList);
     // update all intermediate variables and boundary conditions
     this->updateStateBoundaryConditions();
-    // call daOutput->run to compute OF output variables and assign them to outputList
-    daOutput->run(outputList);
+    // Evaluate the output representation used for reverse-AD recording.
+    daOutput->runForJacobian(outputList);
     // register output
-    forAll(outputList, idxI)
+    for (label idxI = 0; idxI < nRegisteredOutputs; idxI++)
     {
         this->globalADTape_.registerOutput(outputList[idxI]);
     }
     // stop recording
     this->globalADTape_.setPassive();
-    // assign the seed to the outputList's gradient
-    forAll(outputList, idxI)
-    {
-        // if the output is in serial (e.g., function), we need to assign the seed to
-        // only the master processor. This is because the serial output already called
-        // a reduce in the daOutput->run function.
-        if (daOutput().distributed())
-        {
-            // output is distributed, assign seed to all procs
-            outputList[idxI].setGradient(seed[idxI]);
-        }
-        else
-        {
-            // output is in serial, assign seed to the master proc only
-            if (Pstream::master())
-            {
-                outputList[idxI].setGradient(seed[idxI]);
-            }
-        }
-    }
+    // Let the output convert physical seeds to its tape representation.
+    daOutput->setJacobianOutputSeeds(outputList, seed);
     // evaluate tape to compute derivative
     this->globalADTape_.evaluate();
-    // get the matrix-vector product=[dOutput/dInput]^T*seed from the inputList
-    // and assign it to the product array
-    forAll(inputList, idxI)
-    {
-        product[idxI] = inputList[idxI].getGradient();
-        // if the input is in serial (e.g., angle of attack), we need to reduce the product and
-        // make sure the product is consistent among all processors
-        if (!daInput().distributed())
-        {
-            reduce(product[idxI], sumOp<double>());
-        }
-    }
-
-    // we need to normalize the jacobian vector product if inputType == stateVar
-    this->normalizeJacTVecProduct(inputType, product);
+    // Let the input convert tape gradients to the physical product. This hook
+    // also owns serial reductions and input-specific normalization.
+    daInput->getJacobianInputProduct(inputList, product);
 
     // need to clear adjoint and tape after the computation is done!
     this->globalADTape_.clearAdjoints();
@@ -1877,13 +1732,13 @@ void DASolver::calcJacTVecProduct(
     // and calculate the output one more time. This will propagate the zero seeds
     // to all the intermediate variables and reset their gradient to zeros
     // NOTE: cleaning up the seeds is critical; otherwise, it will create AD conflict
-    forAll(inputList, idxI)
+    for (label idxI = 0; idxI < nRegisteredInputs; idxI++)
     {
         this->globalADTape_.deactivateValue(inputList[idxI]);
     }
-    daInput->run(inputList);
+    daInput->runForJacobian(inputList);
     this->updateStateBoundaryConditions();
-    daOutput->run(outputList);
+    daOutput->runForJacobian(outputList);
 
 #endif
 }

@@ -29,6 +29,9 @@ class DAInputStateVar
 {
 
 protected:
+    /// Apply normalizeStates scaling to dOutput/dW^T * seed.
+    void normalizeJacobianInputProduct(double* product);
+
 public:
     TypeName("stateVar");
     // Constructors
@@ -58,6 +61,11 @@ public:
     {
         return 1;
     }
+
+    /// Extract and normalize the reverse-AD state-input product.
+    virtual void getJacobianInputProduct(
+        const scalarList& jacobianInput,
+        double* product);
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

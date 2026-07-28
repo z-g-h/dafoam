@@ -186,7 +186,7 @@ class DAFoamGroup(Group):
                 "force",
                 DAFoamForces(solver=self.DASolver),
                 promotes_inputs=["%s_vol_coords" % self.discipline, "%s_states" % self.discipline],
-                promotes_outputs=["f_aero","x_force"],
+                promotes_outputs=["f_aero", "x_force"],
             )
 
         if self.thermal_coupling:
@@ -201,7 +201,7 @@ class DAFoamGroup(Group):
             self.add_subsystem(
                 "point_temperature",
                 DAFoamPointTemperature(solver=self.DASolver),
-                promotes_inputs=[self.discipline + "_vol_coords", self.discipline + "_states"],
+                promotes_inputs=["*"],
                 promotes_outputs=["*"],
             )
 
@@ -888,94 +888,172 @@ class DAFoamWarper(ExplicitComponent):
 
 class DAFoamThermal(ExplicitComponent):
     """
-    OpenMDAO component that wraps conjugate heat transfer integration
+    OpenMDAO component that evaluates a DAFoam thermal-coupling output.
 
+    Every input whose ``inputInfo`` type is ``thermalCouplingInput`` is
+    registered automatically. A Robin coupling output inherently depends on
+    its Robin input, so this direct OpenMDAO edge must not depend on an
+    optional ``components`` tag in the run script. This retains blocks such as
+
+        d[T_conduct]/d[q_conduct]
+        d[q_convect]/d[T_convect]
+
+    in the coupled linear system whenever a Robin input is configured.
     """
 
     def initialize(self):
         self.options.declare("solver", recordable=False)
 
     def setup(self):
-
         self.DASolver = self.options["solver"]
         DASolver = self.DASolver
 
-        self.discipline = self.DASolver.getOption("discipline")
-
+        self.discipline = DASolver.getOption("discipline")
         self.stateName = "%s_states" % self.discipline
         self.volCoordName = "%s_vol_coords" % self.discipline
 
         self.add_input(self.volCoordName, distributed=True, shape_by_conn=True, tags=["mphys_coupling"])
         self.add_input(self.stateName, distributed=True, shape_by_conn=True, tags=["mphys_coupling"])
 
-        # now loop over the solver input keys to determine which other variables we need to add as inputs
+        # A Robin thermal-coupling output always has a direct dependence on
+        # every configured thermalCouplingInput. Register these inputs by type
+        # instead of requiring a manual "thermalCoupling" component tag in the
+        # run script. The "components" list still controls DAFoamSolver and
+        # DAFoamFunctions; it no longer controls this mandatory output edge.
+        self.inputDict = DASolver.getOption("inputInfo")
+        self.couplingInputNames = []
+        for inputName, inputData in self.inputDict.items():
+            inputType = inputData.get("type")
+            if inputType != "thermalCouplingInput":
+                continue
+
+            inputSize = DASolver.solver.getInputSize(inputName, inputType)
+            inputDistributed = DASolver.solver.getInputDistributed(inputName, inputType)
+            self.add_input(
+                inputName,
+                distributed=inputDistributed,
+                shape=inputSize,
+                tags=["mphys_coupling"],
+            )
+            self.couplingInputNames.append(inputName)
+
+        if not self.couplingInputNames:
+            raise AnalysisError(
+                "DAFoamThermal requires at least one inputInfo entry with "
+                "type 'thermalCouplingInput' for Robin coupling."
+            )
+
+        self.outputName = None
         outputDict = DASolver.getOption("outputInfo")
-        for outputName in list(outputDict.keys()):
-            # this input is attached to the DAFoamThermal comp
-            if "thermalCoupling" in outputDict[outputName]["components"]:
-                self.outputName = outputName
-                self.outputType = outputDict[outputName]["type"]
-                self.outputSize = DASolver.solver.getOutputSize(outputName, self.outputType)
-                outputDistributed = DASolver.solver.getOutputDistributed(outputName, self.outputType)
-                self.add_output(
-                    outputName, distributed=outputDistributed, shape=self.outputSize, tags=["mphys_coupling"]
-                )
-                break
+        for outputName, outputData in outputDict.items():
+            if "thermalCoupling" not in outputData.get("components", []):
+                continue
+
+            self.outputName = outputName
+            self.outputType = outputData["type"]
+            self.outputSize = DASolver.solver.getOutputSize(outputName, self.outputType)
+            outputDistributed = DASolver.solver.getOutputDistributed(outputName, self.outputType)
+            self.add_output(
+                outputName,
+                distributed=outputDistributed,
+                shape=self.outputSize,
+                tags=["mphys_coupling"],
+            )
+            break
+
+        if self.outputName is None:
+            raise AnalysisError("No outputInfo entry with component 'thermalCoupling' was found.")
+
+    def _set_inputs(self, inputs):
+        """Synchronize the complete frozen coupling point to DAFoam.
+
+        Boundary values and output coefficients depend on mesh geometry and
+        Robin data. Set them before the state vector, because setStates updates
+        the temperature boundary conditions using the current coupling data.
+        """
+
+        self.DASolver.setVolCoords(np.ascontiguousarray(inputs[self.volCoordName]))
+
+        for inputName in self.couplingInputNames:
+            inputType = self.inputDict[inputName]["type"]
+            values = np.ascontiguousarray(inputs[inputName])
+            seeds = np.zeros_like(values)
+
+            self.DASolver.solver.setSolverInput(
+                inputName,
+                inputType,
+                len(values),
+                values,
+                seeds,
+            )
+            self.DASolver.solverAD.setSolverInput(
+                inputName,
+                inputType,
+                len(values),
+                values,
+                seeds,
+            )
+
+        self.DASolver.setStates(np.ascontiguousarray(inputs[self.stateName]))
 
     def compute(self, inputs, outputs):
-
-        self.DASolver.setStates(inputs[self.stateName])
-        self.DASolver.setVolCoords(inputs[self.volCoordName])
+        self._set_inputs(inputs)
 
         thermal = np.zeros(self.outputSize)
-
-        self.DASolver.solver.calcOutput(self.outputName, self.outputType, thermal)
-
+        self.DASolver.solver.calcOutput(
+            self.outputName,
+            self.outputType,
+            thermal,
+        )
         outputs[self.outputName] = thermal
 
     def compute_jacvec_product(self, inputs, d_inputs, d_outputs, mode):
-
         if mode == "fwd":
             om.issue_warning(
-                " mode = %s, but the forward mode functions are not implemented for DAFoam!" % mode,
+                " mode = %s, but the forward mode functions are not " "implemented for DAFoam!" % mode,
                 prefix="",
                 stacklevel=2,
                 category=om.OpenMDAOWarning,
             )
             return
 
-        DASolver = self.DASolver
+        if self.outputName not in d_outputs:
+            return
 
-        for outputName in list(d_outputs.keys()):
-            seeds = d_outputs[outputName]
+        # Ensure the reverse tape is evaluated at exactly the same mesh,
+        # coupling data, and state as the explicit output.
+        self._set_inputs(inputs)
 
-            if self.stateName in d_inputs:
-                jacInput = inputs[self.stateName]
-                product = np.zeros_like(jacInput)
-                DASolver.solverAD.calcJacTVecProduct(
-                    self.stateName,
-                    "stateVar",
-                    jacInput,
-                    outputName,
-                    "thermalCouplingOutput",
-                    seeds,
-                    product,
+        seeds = np.ascontiguousarray(d_outputs[self.outputName])
+
+        derivativeInputs = []
+        if self.stateName in d_inputs:
+            derivativeInputs.append((self.stateName, "stateVar", inputs[self.stateName]))
+        if self.volCoordName in d_inputs:
+            derivativeInputs.append((self.volCoordName, "volCoord", inputs[self.volCoordName]))
+        for inputName in self.couplingInputNames:
+            if inputName in d_inputs:
+                derivativeInputs.append(
+                    (
+                        inputName,
+                        self.inputDict[inputName]["type"],
+                        inputs[inputName],
+                    )
                 )
-                d_inputs[self.stateName] += product
 
-            if self.volCoordName in d_inputs:
-                jacInput = inputs[self.volCoordName]
-                product = np.zeros_like(jacInput)
-                DASolver.solverAD.calcJacTVecProduct(
-                    self.volCoordName,
-                    "volCoord",
-                    jacInput,
-                    outputName,
-                    "thermalCouplingOutput",
-                    seeds,
-                    product,
-                )
-                d_inputs[self.volCoordName] += product
+        for inputName, inputType, inputValue in derivativeInputs:
+            jacInput = np.ascontiguousarray(inputValue)
+            product = np.zeros_like(jacInput)
+            self.DASolver.solverAD.calcJacTVecProduct(
+                inputName,
+                inputType,
+                jacInput,
+                self.outputName,
+                self.outputType,
+                seeds,
+                product,
+            )
+            d_inputs[inputName] += product
 
 
 class DAFoamPointTemperature(ExplicitComponent):
@@ -985,6 +1063,12 @@ class DAFoamPointTemperature(ExplicitComponent):
     by ``<discipline>_vol_coords``. For a conformal DAFoam-solid/TACS mesh this
     gives a coordinate-based transfer. The C++ output may subtract a
     constant ``TRef`` so the exported field is ``Delta T = T - TRef``.
+
+    Every ``thermalCouplingInput`` is registered automatically because the
+    point-temperature field is evaluated with the same Robin boundary data as
+    the thermal residual. In particular, the direct
+    ``q_conduct -> T_volume`` edge is mandatory and must not depend on a
+    manual ``thermalStressCoupling`` input tag.
     """
 
     def initialize(self):
@@ -999,6 +1083,33 @@ class DAFoamPointTemperature(ExplicitComponent):
 
         self.add_input(self.volCoordName, distributed=True, shape_by_conn=True, tags=["mphys_coupling"])
         self.add_input(self.stateName, distributed=True, shape_by_conn=True, tags=["mphys_coupling"])
+
+        # Point-temperature output uses the same Robin data as the thermal
+        # residual. Register every thermalCouplingInput automatically so the
+        # direct q_conduct -> T_volume edge is always present. The run script
+        # does not need to add "thermalStressCoupling" to the input components.
+        self.inputDict = self.DASolver.getOption("inputInfo")
+        self.couplingInputNames = []
+        for inputName, inputData in self.inputDict.items():
+            inputType = inputData.get("type")
+            if inputType != "thermalCouplingInput":
+                continue
+
+            inputSize = self.DASolver.solver.getInputSize(inputName, inputType)
+            distributed = self.DASolver.solver.getInputDistributed(inputName, inputType)
+            self.add_input(
+                inputName,
+                distributed=distributed,
+                shape=inputSize,
+                tags=["mphys_coupling"],
+            )
+            self.couplingInputNames.append(inputName)
+
+        if not self.couplingInputNames:
+            raise AnalysisError(
+                "DAFoamPointTemperature requires at least one inputInfo entry "
+                "with type 'thermalCouplingInput' for Robin coupling."
+            )
 
         self.outputName = None
         outputDict = self.DASolver.getOption("outputInfo")
@@ -1017,10 +1128,34 @@ class DAFoamPointTemperature(ExplicitComponent):
         if self.outputName is None:
             raise AnalysisError("No outputInfo entry with component 'thermalStressCoupling' was found.")
 
-    def compute(self, inputs, outputs):
-        self.DASolver.setStates(inputs[self.stateName])
-        self.DASolver.setVolCoords(inputs[self.volCoordName])
+    def _set_inputs(self, inputs):
+        # Boundary interpolation depends on both mesh geometry and q_conduct.
+        # Set X and coupling data before W updates the T boundary conditions.
+        self.DASolver.setVolCoords(np.ascontiguousarray(inputs[self.volCoordName]))
 
+        for inputName in self.couplingInputNames:
+            inputType = self.inputDict[inputName]["type"]
+            values = np.ascontiguousarray(inputs[inputName])
+            seeds = np.zeros_like(values)
+            self.DASolver.solver.setSolverInput(
+                inputName,
+                inputType,
+                len(values),
+                values,
+                seeds,
+            )
+            self.DASolver.solverAD.setSolverInput(
+                inputName,
+                inputType,
+                len(values),
+                values,
+                seeds,
+            )
+
+        self.DASolver.setStates(np.ascontiguousarray(inputs[self.stateName]))
+
+    def compute(self, inputs, outputs):
+        self._set_inputs(inputs)
         point_temperature = np.zeros(self.outputSize)
         self.DASolver.solver.calcOutput(self.outputName, self.outputType, point_temperature)
         outputs[self.outputName] = point_temperature
@@ -1042,34 +1177,38 @@ class DAFoamPointTemperature(ExplicitComponent):
         if self.outputName not in d_outputs:
             return
 
-        seeds = d_outputs[self.outputName]
-        if self.stateName in d_inputs:
-            jacInput = inputs[self.stateName]
-            product = np.zeros_like(jacInput)
-            self.DASolver.solverAD.calcJacTVecProduct(
-                self.stateName,
-                "stateVar",
-                jacInput,
-                self.outputName,
-                self.outputType,
-                seeds,
-                product,
-            )
-            d_inputs[self.stateName] += product
+        seeds = np.ascontiguousarray(d_outputs[self.outputName])
 
+        self._set_inputs(inputs)
+
+        derivativeInputs = []
+        if self.stateName in d_inputs:
+            derivativeInputs.append((self.stateName, "stateVar", inputs[self.stateName]))
         if self.volCoordName in d_inputs:
-            jacInput = inputs[self.volCoordName]
+            derivativeInputs.append((self.volCoordName, "volCoord", inputs[self.volCoordName]))
+        for inputName in self.couplingInputNames:
+            if inputName in d_inputs:
+                derivativeInputs.append(
+                    (
+                        inputName,
+                        self.inputDict[inputName]["type"],
+                        inputs[inputName],
+                    )
+                )
+
+        for inputName, inputType, inputValue in derivativeInputs:
+            jacInput = np.ascontiguousarray(inputValue)
             product = np.zeros_like(jacInput)
             self.DASolver.solverAD.calcJacTVecProduct(
-                self.volCoordName,
-                "volCoord",
+                inputName,
+                inputType,
                 jacInput,
                 self.outputName,
                 self.outputType,
                 seeds,
                 product,
             )
-            d_inputs[self.volCoordName] += product
+            d_inputs[inputName] += product
 
 
 class DAFoamFaceCoords(ExplicitComponent):
@@ -1210,7 +1349,7 @@ class DAFoamForces(ExplicitComponent):
                 category=om.OpenMDAOWarning,
             )
             return
-        
+
         if self.forceCoordName in d_outputs and self.volCoordName in d_inputs:
             coordSeed = np.asarray(d_outputs[self.forceCoordName]).reshape((-1, 3))
             volSeed = d_inputs[self.volCoordName].reshape((-1, 3))

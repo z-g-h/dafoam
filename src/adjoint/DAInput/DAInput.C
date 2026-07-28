@@ -6,6 +6,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "DAInput.H"
+#include "Pstream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -89,6 +90,55 @@ autoPtr<DAInput> DAInput::New(
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+label DAInput::jacobianInputSize()
+{
+    return size();
+}
+
+label DAInput::jacobianRegisteredInputSize()
+{
+    return jacobianInputSize();
+}
+
+void DAInput::setJacobianInputValues(
+    scalarList& jacobianInput,
+    const double* physicalInput)
+{
+    forAll(jacobianInput, idxI)
+    {
+        jacobianInput[idxI] = physicalInput[idxI];
+    }
+}
+
+void DAInput::runForJacobian(const scalarList& jacobianInput)
+{
+    run(jacobianInput);
+}
+
+void DAInput::getJacobianInputProduct(const scalarList& jacobianInput, double* product)
+{
+#ifdef CODI_ADR
+    forAll(jacobianInput, idxI)
+    {
+        product[idxI] = jacobianInput[idxI].getGradient();
+
+        // A serial input is replicated on every processor. Its reverse
+        // contribution must therefore be summed and returned consistently on
+        // every processor. Distributed inputs already own their local entries.
+        if (!distributed())
+        {
+            reduce(product[idxI], sumOp<double>());
+        }
+    }
+#else
+    // These hooks are called only by the reverse-AD implementation of
+    // DASolver::calcJacTVecProduct. Keep passive and forward builds
+    // source-compatible.
+    (void)jacobianInput;
+    (void)product;
+#endif
+}
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
