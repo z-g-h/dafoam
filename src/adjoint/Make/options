@@ -35,7 +35,7 @@ EXE_INC = \
 ifeq ($(ENABLE_TURBOMACHINERY),1)
 EXE_INC += \
     -DTURBOMACHINERY \
-    -I/home/dafoamuser/code-development/mixingPlane/lnInclude  
+    -I$(MIXING_PLANE_PATH)/lnInclude  
 endif
     
     
