@@ -3981,7 +3981,7 @@ void DASolver::writeSensMapSurface(
         {
             forAll(sens.boundaryField()[patchI], faceI)
             {
-                sens.boundaryFieldRef()[patchI][faceI] /= sens.boundaryFieldRef()[patchI][faceI].size();
+                sens.boundaryFieldRef()[patchI][faceI] /= meshPtr_->boundaryMesh()[patchI][faceI].size();
             }
         }
     }
