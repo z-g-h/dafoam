@@ -263,8 +263,8 @@ void DALinearEqnFS::createMLRKSP(
         KSPSetType(subfieldksp[i], KSPPREONLY);
         KSPGetPC(subfieldksp[i], &subfieldpc);
         PCSetType(subfieldpc, PCASM);
-        PCSetUp(subfieldpc);
         PCASMSetOverlap(subfieldpc, asmOverlap);
+        PCSetUp(subfieldpc);
         KSP* subfieldkspsubdomain;
         PetscInt firstsub;
         PetscInt ndomain;
