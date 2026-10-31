@@ -307,6 +307,9 @@ void DALinearEqnFSModel::createMLRKSP(
         Info << "GMRES Relative Tolerance: " << rtol << endl;
         Info << "GMRES Absolute Tolerance: " << atol << endl;
     }
+
+    ISDestroy(&is_flow);
+    ISDestroy(&is_model);
 }
 
 } // End namespace Foam

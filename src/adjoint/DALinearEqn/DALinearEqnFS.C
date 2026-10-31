@@ -356,7 +356,7 @@ void DALinearEqnFS::createMLRKSP(
     ISDestroy(&is_flowState);
     ISDestroy(&is_surfaceState);
     ISDestroy(&is_union);
-    ISDestroy(&is_flowState);
+    ISDestroy(&is_modelState);
 }
 
 } // End namespace Foam
