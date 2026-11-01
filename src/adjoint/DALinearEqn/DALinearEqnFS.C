@@ -72,25 +72,25 @@ void DALinearEqnFS::createMLRKSP(
         genksp: the set KSP object 
     */
 
-    label gmresRestart =
+    const label gmresRestart =
         daOption_.getSubDictOption<label>("adjEqnOption", "gmresRestart");
-    label asmOverlap =
+    const label asmOverlap =
         daOption_.getSubDictOption<label>("adjEqnOption", "asmOverlap");
-    word jacMatReOrdering =
+    const word jacMatReOrdering =
         daOption_.getSubDictOption<word>("adjEqnOption", "jacMatReOrdering");
-    label pcFillLevel =
+    const label pcFillLevel =
         daOption_.getSubDictOption<label>("adjEqnOption", "pcFillLevel");
-    label gmresMaxIters =
+    const label gmresMaxIters =
         daOption_.getSubDictOption<label>("adjEqnOption", "gmresMaxIters");
-    scalar gmresRelTol =
+    const scalar gmresRelTol =
         daOption_.getSubDictOption<scalar>("adjEqnOption", "gmresRelTol");
-    scalar gmresAbsTol =
+    const scalar gmresAbsTol =
         daOption_.getSubDictOption<scalar>("adjEqnOption", "gmresAbsTol");
-    label useNonZeroInitGuess =
+    const label useNonZeroInitGuess =
         daOption_.getSubDictOption<label>("adjEqnOption", "useNonZeroInitGuess");
-    label useMGSO =
+    const label useMGSO =
         daOption_.getSubDictOption<label>("adjEqnOption", "useMGSO");
-    label printInfo =
+    const label printInfo =
         daOption_.getSubDictOption<label>("adjEqnOption", "printInfo");
 
     PC MLRGlobalPC;
@@ -191,10 +191,10 @@ void DALinearEqnFS::createMLRKSP(
 
     // exact model and surface state IS
     IS is_flowState, is_modelState, is_surfaceState;
-    label nLocalCells = daIndex_.nLocalCells;
-    label nLocalFaces = daIndex_.nLocalFaces;
-    PetscInt modelState_indices[modelStateSize * nLocalCells];
-    PetscInt surfaceState_indices[surfaceStateSize * nLocalFaces];
+    const label nLocalCells = daIndex_.nLocalCells;
+    const label nLocalFaces = daIndex_.nLocalFaces;
+    List<PetscInt> modelStateIndices(modelStateSize * nLocalCells);
+    List<PetscInt> surfaceStateIndices(surfaceStateSize * nLocalFaces);
 
     // get model state index in dRdW
     forAll(mesh_.cells(), cellI)
@@ -202,7 +202,7 @@ void DALinearEqnFS::createMLRKSP(
         for (PetscInt idx = 0; idx < modelStateSize; idx++)
         {
             PetscInt globalIdx = daIndex_.getGlobalAdjointStateIndex(modelState[idx], cellI);
-            modelState_indices[modelStateSize * cellI + idx] = globalIdx;
+            modelStateIndices[modelStateSize * cellI + idx] = globalIdx;
         }
     }
 
@@ -212,19 +212,26 @@ void DALinearEqnFS::createMLRKSP(
         for (PetscInt idx = 0; idx < surfaceStateSize; idx++)
         {
             PetscInt globalIdx = daIndex_.getGlobalAdjointStateIndex(surfaceState[idx], faceI);
-            surfaceState_indices[surfaceStateSize * faceI + idx] = globalIdx;
+            surfaceStateIndices[surfaceStateSize * faceI + idx] = globalIdx;
         }
     }
 
-    modelState.clear();
-    surfaceState.clear();
-
     // create IS for model state
-    ISCreateGeneral(PETSC_COMM_WORLD, modelStateSize * nLocalCells, modelState_indices, PETSC_COPY_VALUES, &is_modelState);
+    ISCreateGeneral(
+        PETSC_COMM_WORLD,
+        modelStateIndices.size(),
+        modelStateIndices.begin(),
+        PETSC_COPY_VALUES,
+        &is_modelState);
     ISSort(is_modelState);
 
     // create IS for surface state
-    ISCreateGeneral(PETSC_COMM_WORLD, surfaceStateSize * nLocalFaces, surfaceState_indices, PETSC_COPY_VALUES, &is_surfaceState);
+    ISCreateGeneral(
+        PETSC_COMM_WORLD,
+        surfaceStateIndices.size(),
+        surfaceStateIndices.begin(),
+        PETSC_COPY_VALUES,
+        &is_surfaceState);
     ISSort(is_surfaceState);
 
     // use a complement to get flow state IS
@@ -253,79 +260,78 @@ void DALinearEqnFS::createMLRKSP(
     //Setup the main ksp context before extracting the subdomains
     KSPSetUp(ksp);
 
-    // set every subfieldPC to ASM(ILU)
+    // Surface state uses identity; flow and model states use ASM(ILU).
     PetscInt nsub;
     KSP* subfieldksp;
     PCFieldSplitGetSubKSP(MLRGlobalPC, &nsub, &subfieldksp);
+
+    MatOrderingType localMatrixOrdering;
+    if (jacMatReOrdering == "natural")
+    {
+        localMatrixOrdering = MATORDERINGNATURAL;
+    }
+    else if (jacMatReOrdering == "nd")
+    {
+        localMatrixOrdering = MATORDERINGND;
+    }
+    else if (jacMatReOrdering == "rcm")
+    {
+        localMatrixOrdering = MATORDERINGRCM;
+    }
+    else if (jacMatReOrdering == "1wd")
+    {
+        localMatrixOrdering = MATORDERING1WD;
+    }
+    else if (jacMatReOrdering == "qmd")
+    {
+        localMatrixOrdering = MATORDERINGQMD;
+    }
+    else
+    {
+        Info << "matOrdering not known. Using default: nested dissection" << endl;
+        localMatrixOrdering = MATORDERINGND;
+    }
+
     for (PetscInt i = 0; i < nsub; i++)
     {
         PC subfieldpc;
         KSPSetType(subfieldksp[i], KSPPREONLY);
         KSPGetPC(subfieldksp[i], &subfieldpc);
+
+        // The surface-state correction is intentionally an identity action.
+        // Avoid creating ASM subdomains and submatrices for this large block.
+        if (i == 0)
+        {
+            PCSetType(subfieldpc, PCNONE);
+            continue;
+        }
+
         PCSetType(subfieldpc, PCASM);
+        // Overlap must be specified before PCSetUp constructs the subdomains.
         PCASMSetOverlap(subfieldpc, asmOverlap);
         PCSetUp(subfieldpc);
+
         KSP* subfieldkspsubdomain;
-        PetscInt firstsub;
         PetscInt ndomain;
-        PCASMGetSubKSP(subfieldpc, &ndomain, &firstsub, &subfieldkspsubdomain);
+        PCASMGetSubKSP(subfieldpc, &ndomain, NULL, &subfieldkspsubdomain);
         for (PetscInt j = 0; j < ndomain; j++)
         {
             PC subfieldsubdomianpc;
             KSPSetType(subfieldkspsubdomain[j], KSPPREONLY);
             KSPGetPC(subfieldkspsubdomain[j], &subfieldsubdomianpc);
-            // if state is surfaceState, we need to do nothing, this can save some memory
-            if (i == 0)
-            {
-                PCSetType(subfieldsubdomianpc, PCNONE);
-            }
-            // if state is flow or model state, we use ASM(ILU)
-            else
-            {
-                PCSetType(subfieldsubdomianpc, PCILU);
-                PCFactorSetPivotInBlocks(subfieldsubdomianpc, PETSC_TRUE);
-                PCFactorSetShiftType(subfieldsubdomianpc, MAT_SHIFT_NONZERO);
-                PCFactorSetShiftAmount(subfieldsubdomianpc, PETSC_DECIDE);
-
-                // Setup the matrix ordering for the subpc object:
-                // 'natural':'natural',
-                // 'rcm':'rcm',
-                // 'nested dissection':'nd' (default),
-                // 'one way dissection':'1wd',
-                // 'quotient minimum degree':'qmd',
-                MatOrderingType localMatrixOrdering;
-                if (jacMatReOrdering == "natural")
-                {
-                    localMatrixOrdering = MATORDERINGNATURAL;
-                }
-                else if (jacMatReOrdering == "nd")
-                {
-                    localMatrixOrdering = MATORDERINGND;
-                }
-                else if (jacMatReOrdering == "rcm")
-                {
-                    localMatrixOrdering = MATORDERINGRCM;
-                }
-                else if (jacMatReOrdering == "1wd")
-                {
-                    localMatrixOrdering = MATORDERING1WD;
-                }
-                else if (jacMatReOrdering == "qmd")
-                {
-                    localMatrixOrdering = MATORDERINGQMD;
-                }
-                else
-                {
-                    Info << "matOrdering not known. Using default: nested dissection" << endl;
-                    localMatrixOrdering = MATORDERINGND;
-                }
-                PCFactorSetMatOrderingType(subfieldsubdomianpc, localMatrixOrdering);
-
-                // Set the ILU parameters
-                PCFactorSetLevels(subfieldsubdomianpc, pcFillLevel);
-            }
+            PCSetType(subfieldsubdomianpc, PCILU);
+            PCFactorSetPivotInBlocks(subfieldsubdomianpc, PETSC_TRUE);
+            PCFactorSetShiftType(subfieldsubdomianpc, MAT_SHIFT_NONZERO);
+            PCFactorSetShiftAmount(subfieldsubdomianpc, PETSC_DECIDE);
+            PCFactorSetMatOrderingType(
+                subfieldsubdomianpc, localMatrixOrdering);
+            PCFactorSetLevels(subfieldsubdomianpc, pcFillLevel);
         }
     }
+
+    // PCFieldSplitGetSubKSP allocates only the pointer array. The KSP objects
+    // remain owned by PCFIELDSPLIT and must not be destroyed here.
+    PetscFree(subfieldksp);
 
     // Set the norm to unpreconditioned
     KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
@@ -354,9 +360,9 @@ void DALinearEqnFS::createMLRKSP(
     }
 
     ISDestroy(&is_flowState);
+    ISDestroy(&is_modelState);
     ISDestroy(&is_surfaceState);
     ISDestroy(&is_union);
-    ISDestroy(&is_modelState);
 }
 
 } // End namespace Foam
