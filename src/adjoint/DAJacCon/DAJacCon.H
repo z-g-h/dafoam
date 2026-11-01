@@ -71,14 +71,14 @@ protected:
     HashTable<wordList> stateInfo_;
 
     /// matrix to store boundary connectivity levels for state Jacobians
-    Mat stateBoundaryCon_;
+    Mat stateBoundaryCon_ = NULL;
     /// matrix to store field boundary connectivity levels for state Jacobians
-    Mat fieldStateBoundaryCon_;
+    Mat fieldStateBoundaryCon_ = NULL;
 
     /// matrix to store boundary connectivity ID for state Jacobians
-    Mat stateBoundaryConID_;
+    Mat stateBoundaryConID_ = NULL;
     /// matrix to store field boundary connectivity ID for state Jacobians
-    Mat fieldStateBoundaryConID_;
+    Mat fieldStateBoundaryConID_ = NULL;
 
     /// neibough face global index for a given local boundary face
     ///     for coupled boundary
@@ -87,20 +87,23 @@ protected:
     labelListList fieldNeiBFaceGlobalCompact_;
 
     /// Jacobian connectivity mat
-    Mat jacCon_;
+    // This matrix is created only on paths that actually build connectivity.
+    // Keep the handle null so clear()/the destructor are safe when a coloring
+    // file already exists and initializeJacCon() is skipped.
+    Mat jacCon_ = NULL;
 
     /// jacCon matrix colors
-    Vec jacConColors_;
+    Vec jacConColors_ = NULL;
 
     /// number of jacCon colors
-    label nJacConColors_;
+    label nJacConColors_ = 0;
 
     /// \name on- and off-diagonal preallocation sizes for each row of dRdW, dRdWT, and dRdXv
     //@{
-    Vec dRdWTPreallocOn_;
-    Vec dRdWTPreallocOff_;
-    Vec dRdWPreallocOn_;
-    Vec dRdWPreallocOff_;
+    Vec dRdWTPreallocOn_ = NULL;
+    Vec dRdWTPreallocOff_ = NULL;
+    Vec dRdWPreallocOn_ = NULL;
+    Vec dRdWPreallocOff_ = NULL;
     //@}
 
     /// a map to temperary store the connectivity, used to setup jacCon_ and boundaryCon_
