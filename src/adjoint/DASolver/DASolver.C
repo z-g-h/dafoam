@@ -1129,6 +1129,8 @@ void DASolver::calcdRdWT(
 
     // clear up
     daJacCon.clear();
+    VecDestroy(&xvVec);
+    VecDestroy(&wVec);
 }
 
 void DASolver::updateKSPPCMat(

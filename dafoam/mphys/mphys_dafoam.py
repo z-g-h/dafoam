@@ -541,8 +541,9 @@ class DAFoamSolver(ImplicitComponent):
                 if not self.DASolver.getOption("adjEqnOption")["useNonZeroInitGuess"]:
                     self.psi.set(0)
                 else:
-                    # if useNonZeroInitGuess is True, we will assign the OM's psi to self.psi
-                    self.psi = DASolver.array2Vec(d_residuals[self.stateName].copy())
+                    # Reuse the persistent PETSc vector instead of allocating
+                    # a new state-sized Vec for every adjoint solve.
+                    DASolver.arrayVal2Vec(d_residuals[self.stateName], self.psi)
 
                 if self.DASolver.getOption("adjEqnOption")["dynAdjustTol"]:
                     # if we want to dynamically adjust the tolerance, call this function. This is mostly used
@@ -574,7 +575,7 @@ class DAFoamSolver(ImplicitComponent):
             DASolver.writeAdjointFields("function", solTimeFloat, psi_array)
 
             # convert the solution vector to array and assign it to d_residuals
-            d_residuals[self.stateName] = DASolver.vec2Array(self.psi)
+            d_residuals[self.stateName] = psi_array
 
             # if the adjoint solution fail, we return analysisError and let the optimizer handle it
             if fail:

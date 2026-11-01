@@ -471,6 +471,15 @@ void DAPartDeriv::calcPartDerivMat(
     {
         daIndex_.printMatChars(jacMat);
     }
+
+    // These work vectors are local to one Jacobian assembly. Keeping them
+    // alive leaks several state-sized vectors every time the PC matrix is
+    // rebuilt during an optimization.
+    VecDestroy(&normStatePerturbVec);
+    VecDestroy(&resVecRef);
+    VecDestroy(&resVec);
+    VecDestroy(&wVecNew);
+    VecDestroy(&coloredColumn);
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

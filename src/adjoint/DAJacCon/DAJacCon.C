@@ -2253,7 +2253,8 @@ void DAJacCon::preallocateStateBndCon(
     VecAssemblyEnd(conPreallocOff);
 
     PetscScalar *onVec, *offVec;
-    PetscInt onSize[localRows], offSize[localRows];
+    List<PetscInt> onSize(localRows);
+    List<PetscInt> offSize(localRows);
 
     VecGetArray(conPreallocOn, &onVec);
     VecGetArray(conPreallocOff, &offVec);
@@ -2270,11 +2271,17 @@ void DAJacCon::preallocateStateBndCon(
     VecRestoreArray(conPreallocOn, &onVec);
     VecRestoreArray(conPreallocOff, &offVec);
 
-    MatMPIAIJSetPreallocation(*bndConMat, NULL, onSize, NULL, offSize);
-    MatSeqAIJSetPreallocation(*bndConMat, NULL, onSize);
+    MatMPIAIJSetPreallocation(
+        *bndConMat,
+        NULL,
+        onSize.begin(),
+        NULL,
+        offSize.begin());
+    MatSeqAIJSetPreallocation(*bndConMat, NULL, onSize.begin());
 
     VecDestroy(&conPreallocOn);
     VecDestroy(&conPreallocOff);
+    PetscFree4(allstarts, allends, allcolMins, allcolMaxs);
     return;
 }
 

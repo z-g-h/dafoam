@@ -234,6 +234,7 @@ protected:
         MatDestroy(&stateBoundaryConID_);
         MatDestroy(&fieldStateBoundaryConID_);
         VecDestroy(&jacConColors_);
+        VecDestroy(&isPIVBCState_);
         stateInfo_.clear();
         neiBFaceGlobalCompact_.clear();
         fieldNeiBFaceGlobalCompact_.clear();
@@ -243,7 +244,7 @@ protected:
     void checkSpecialBCs();
 
     /// a vector to show whether a state is connected to a pressureInletVelocity boundary face (3 level max)
-    Vec isPIVBCState_;
+    Vec isPIVBCState_ = NULL;
 
     /// function used to add connectivity for pressureInletVelocity
     void setPIVVec(
@@ -290,6 +291,7 @@ public:
     //- Destructor
     virtual ~DAJacCon()
     {
+        this->clear();
     }
 
     // Member functions

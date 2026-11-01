@@ -1030,6 +1030,7 @@ void DAIndex::calcAdjStateID4GlobalAdjIdx(labelList& adjStateID4GlobalAdjIdx) co
     VecRestoreArray(vout, &stateIVecArray);
     VecScatterDestroy(&ctx);
     VecDestroy(&vout);
+    VecDestroy(&stateIVec);
 
     return;
 }
