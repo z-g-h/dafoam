@@ -511,18 +511,27 @@ class DAFoamSolver(ImplicitComponent):
                     adjPCLag = DASolver.getOption("adjPCLag")
                     if DASolver.dRdWTPC is None or DASolver.ksp is None or (self.solution_counter - 1) % adjPCLag == 0:
                         if renamed:
-                            # calculate the PC mat
+                            # Release the old KSP first. Its PC can retain the
+                            # old matrix, field-split submatrices, and ILU
+                            # factors. Keeping it alive while assembling the
+                            # new PC matrix creates an avoidable memory peak.
+                            if DASolver.ksp is not None:
+                                DASolver.ksp.destroy()
+                                DASolver.ksp = None
+
                             if DASolver.dRdWTPC is not None:
                                 DASolver.dRdWTPC.destroy()
+                                DASolver.dRdWTPC = None
+
+                            # calculate the new PC mat
                             DASolver.dRdWTPC = PETSc.Mat().create(self.comm)
                             if (DASolver.getOption("adjEqnOption"))["readPCMat"]:
                                 viewer = PETSc.Viewer().createBinary("dRdWTPC.bin", "r", comm=self.comm)
                                 DASolver.dRdWTPC = PETSc.Mat().load(viewer)
                             else:
                                 DASolver.solver.calcdRdWT(1, DASolver.dRdWTPC)
-                            # reset the KSP
-                            if DASolver.ksp is not None:
-                                DASolver.ksp.destroy()
+
+                            # create a new KSP using the new PC matrix
                             DASolver.ksp = PETSc.KSP().create(self.comm)
                             DASolver.solverAD.createMLRKSPMatrixFree(DASolver.dRdWTPC, DASolver.ksp)
 

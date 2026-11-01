@@ -138,7 +138,7 @@ protected:
     void writeAssociatedFields();
 
     /// matrix-free dRdWT matrix used in GMRES solution
-    Mat dRdWTMF_;
+    Mat dRdWTMF_ = NULL;
 
     /// a flag in dRdWTMatVecMultFunction to determine if the global tap is initialized
     label globalADTape4dRdWTInitialized = 0;

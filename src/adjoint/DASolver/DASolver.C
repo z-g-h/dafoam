@@ -1194,6 +1194,14 @@ label DASolver::solveLinearEqn(
     this->updateStateBoundaryConditions();
     this->calcResiduals();
 
+#ifdef CODI_ADR
+    // The matrix-free product records a fresh tape for every adjoint solve.
+    // Reset the completed tape here so unrelated primal/derivative work does
+    // not keep a logically live residual tape between solves. CoDiPack may
+    // retain allocated chunks for reuse, but their contents are released.
+    this->globalADTape_.reset();
+#endif
+
     return error;
 }
 
@@ -1393,6 +1401,13 @@ void DASolver::initializedRdWTMatrixFree()
         this->calcPrimalResidualStatistics("print");
     }
 
+    // Avoid retaining an old shell matrix if this initialization is called
+    // more than once during the lifetime of a solver object.
+    if (dRdWTMF_ != NULL)
+    {
+        MatDestroy(&dRdWTMF_);
+    }
+
     // No need to set the size, instead, we need to provide a function to compute
     // matrix-vector product, i.e., the dRdWTMatVecMultFunction function
     label localSize = daIndexPtr_->nLocalAdjointStates;
@@ -1411,7 +1426,11 @@ void DASolver::destroydRdWTMatrixFree()
     Description:
         Destroy dRdWTMF_
     */
-    MatDestroy(&dRdWTMF_);
+    if (dRdWTMF_ != NULL)
+    {
+        MatDestroy(&dRdWTMF_);
+    }
+    globalADTape4dRdWTInitialized = 0;
 #endif
 }
 

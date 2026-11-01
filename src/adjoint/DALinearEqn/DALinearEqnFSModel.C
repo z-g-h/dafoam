@@ -183,20 +183,25 @@ void DALinearEqnFSModel::createMLRKSP(
 
     // exact model state IS
     IS is_flow, is_model;
-    label nLocalCells = daIndex_.nLocalCells;
-    PetscInt modelState_indices[modelStateSize * nLocalCells];
+    const label nLocalCells = daIndex_.nLocalCells;
+    List<PetscInt> modelStateIndices(modelStateSize * nLocalCells);
     forAll(mesh_.cells(), cellI)
     {
         for (PetscInt idx = 0; idx < modelStateSize; idx++)
         {
             PetscInt globalIdx = daIndex_.getGlobalAdjointStateIndex(modelState[idx], cellI);
-            modelState_indices[modelStateSize * cellI + idx] = globalIdx;
+            modelStateIndices[modelStateSize * cellI + idx] = globalIdx;
         }
     }
 
     modelState.clear();
 
-    ISCreateGeneral(PETSC_COMM_WORLD, modelStateSize * nLocalCells, modelState_indices, PETSC_COPY_VALUES, &is_model);
+    ISCreateGeneral(
+        PETSC_COMM_WORLD,
+        modelStateIndices.size(),
+        modelStateIndices.begin(),
+        PETSC_COPY_VALUES,
+        &is_model);
     ISSort(is_model);
 
     // use a complement to get flow state and surfaceState IS
@@ -225,8 +230,12 @@ void DALinearEqnFSModel::createMLRKSP(
     for (PetscInt i = 0; i < nsub; i++)
     {
         PC subfieldpc;
+        // FieldSplit is used as a preconditioner. Avoid allocating an
+        // additional Krylov basis inside each field block.
+        KSPSetType(subfieldksp[i], KSPPREONLY);
         KSPGetPC(subfieldksp[i], &subfieldpc);
         PCSetType(subfieldpc, PCASM);
+        // Set overlap before setup constructs the ASM subdomains.
         PCASMSetOverlap(subfieldpc, asmOverlap);
         PCSetUp(subfieldpc);
         KSP* subfieldkspsubdomain;
@@ -281,6 +290,10 @@ void DALinearEqnFSModel::createMLRKSP(
             PCFactorSetLevels(subfieldsubdomianpc, pcFillLevel);
         }
     }
+
+    // PCFieldSplitGetSubKSP allocates the pointer array. The KSP objects
+    // remain owned by PCFIELDSPLIT and must not be destroyed here.
+    PetscFree(subfieldksp);
 
     // Set the norm to unpreconditioned
     KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
