@@ -497,6 +497,12 @@ class DAOPTION(object):
         ## Whether running the optimization in the debug mode, which prints extra information.
         self.debug = False
 
+        ## Split the reverse-AD volume-coordinate residual product into a residual tape and
+        ## a mesh-geometry tape. This reduces the peak tape size at the cost of one extra
+        ## mesh-geometry update. It currently targets steady, fixed-topology cases and is
+        ## used only for volCoord -> residual/function transpose products.
+        self.adjointUseGeometryCheckpoint = False
+
         ## Whether to write Jacobian matrices to file for debugging
         ## Example:
         ##    writeJacobians = ["dRdWT", "dFdW"]

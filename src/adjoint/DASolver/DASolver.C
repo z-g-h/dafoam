@@ -6,6 +6,7 @@
 \*---------------------------------------------------------------------------*/
 
 #include "DASolver.H"
+#include "DAGeometryCheckpoint.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 // initialize the static variable, which will be used in forward mode AD
@@ -219,7 +220,7 @@ label DASolver::loop(Time& runTime)
         funcObj.end();
         daRegressionPtr_->writeFeatures();
         primalFinalTimeIndex_ = runTime.timeIndex();
-        return 0;        
+        return 0;
     }
     else if (t > endTime - 0.5 * deltaT)
     {
@@ -268,7 +269,7 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initRes << endl;
+                             << " dynInitPrimalRes: " << initRes << endl;
                     }
                 }
                 else
@@ -277,12 +278,11 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initRes << endl;
-                    }                    
+                             << " dynInitPrimalRes: " << initRes << endl;
+                    }
                 }
-
             }
-            else if (runTime.timeIndex() > runTime.startTimeIndex() +1)
+            else if (runTime.timeIndex() > runTime.startTimeIndex() + 1)
             {
                 daGlobalVarPtr_->dynPrimalRes = initRes;
             }
@@ -320,7 +320,7 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initResList[1] << endl;
+                             << " dynInitPrimalRes: " << initResList[1] << endl;
                     }
                 }
                 else
@@ -329,8 +329,8 @@ void DASolver::setupDynAdjustPrimalResidual(
                     if (daOptionPtr_->getOption<bool>("debug") == true)
                     {
                         Info << "use state " << varName << " as monitorState "
-                            << " dynInitPrimalRes: " << initResList[1] << endl;
-                    }                    
+                             << " dynInitPrimalRes: " << initResList[1] << endl;
+                    }
                 }
             }
             else if (runTime.timeIndex() > runTime.startTimeIndex() + 1)
@@ -1762,6 +1762,146 @@ label DASolver::getOutputDistributed(
     return daOutput->distributed();
 }
 
+#ifdef CODI_ADR
+void DASolver::calcJacTVecProductGeometryCheckpoint(
+    DAInput& daInput,
+    const word inputType,
+    DAOutput& daOutput,
+    scalarList& inputList,
+    scalarList& outputList,
+    const label nRegisteredInputs,
+    const label nRegisteredOutputs,
+    const double* seed,
+    double* product)
+{
+    /*
+    Description:
+        Compute [dOutput/dXv]^T*seed in two reverse sweeps with the mesh geometry
+        used as a checkpoint interface:
+
+            lambda_G = [dOutput/dG]^T*seed
+            product  = [dG/dXv]^T*lambda_G
+
+        The residual/function and mesh-motion operations are therefore never
+        resident on the tape at the same time.
+    */
+
+    if (daOptionPtr_->getAllOptions().subDict("dynamicMesh").getLabel("active"))
+    {
+        FatalErrorInFunction
+            << "adjointUseGeometryCheckpoint currently supports only steady, "
+            << "fixed-topology volume-coordinate derivatives. Set "
+            << "dynamicMesh.active to false or disable "
+            << "adjointUseGeometryCheckpoint."
+            << abort(FatalError);
+    }
+
+    Info << "Using geometry checkpoint for a volume-coordinate transpose product" << endl;
+
+    // Establish the requested passive mesh and all demand-driven geometry
+    // caches before defining the checkpoint interface.
+    globalADTape_.reset();
+    globalADTape_.setPassive();
+    daInput.run(inputList);
+
+    DAGeometryCheckpoint geometryCheckpoint(meshPtr_());
+    geometryCheckpoint.captureReference();
+    List<double> geometryAdjoints
+    (
+        geometryCheckpoint.interfaceSize(),
+        0.0
+    );
+
+    // ------------------------------------------------------------------
+    // Output segment: G -> output, yielding lambda_G.
+    // ------------------------------------------------------------------
+    globalADTape_.reset();
+    globalADTape_.setActive();
+
+    geometryCheckpoint.registerInputs(globalADTape_);
+
+    updateStateBoundaryConditions();
+    daOutput.run(outputList);
+
+    for (label idxI = 0; idxI < nRegisteredOutputs; idxI++)
+    {
+        globalADTape_.registerOutput(outputList[idxI]);
+    }
+
+    globalADTape_.setPassive();
+    forAll(outputList, idxI)
+    {
+        if (daOutput.distributed())
+        {
+            outputList[idxI].setGradient(seed[idxI]);
+        }
+        else if (Pstream::master())
+        {
+            outputList[idxI].setGradient(seed[idxI]);
+        }
+    }
+    globalADTape_.evaluate();
+
+    geometryCheckpoint.readGradients(geometryAdjoints);
+
+    globalADTape_.clearAdjoints();
+    globalADTape_.reset();
+
+    geometryCheckpoint.deactivateValues(globalADTape_);
+    for (label idxI = 0; idxI < nRegisteredOutputs; idxI++)
+    {
+        globalADTape_.deactivateValue(outputList[idxI]);
+    }
+
+    // Boundary fields can carry identifiers made by the output segment.
+    updateStateBoundaryConditions();
+
+    // ------------------------------------------------------------------
+    // Geometry segment: Xv -> G, yielding [dG/dXv]^T*lambda_G.
+    // ------------------------------------------------------------------
+    globalADTape_.reset();
+    globalADTape_.setActive();
+
+    for (label idxI = 0; idxI < nRegisteredInputs; idxI++)
+    {
+        globalADTape_.registerInput(inputList[idxI]);
+    }
+
+    daInput.run(inputList);
+    geometryCheckpoint.verifyReplay();
+    geometryCheckpoint.registerOutputs(globalADTape_);
+
+    globalADTape_.setPassive();
+    geometryCheckpoint.seedGradients(geometryAdjoints);
+    globalADTape_.evaluate();
+
+    forAll(inputList, idxI)
+    {
+        product[idxI] = inputList[idxI].getGradient();
+        if (!daInput.distributed())
+        {
+            reduce(product[idxI], sumOp<double>());
+        }
+    }
+
+    normalizeJacTVecProduct(inputType, product);
+
+    globalADTape_.clearAdjoints();
+    globalADTape_.reset();
+
+    for (label idxI = 0; idxI < nRegisteredInputs; idxI++)
+    {
+        globalADTape_.deactivateValue(inputList[idxI]);
+    }
+    geometryCheckpoint.deactivateValues(globalADTape_);
+
+    // Restore the passive state expected by subsequent derivative calls.
+    daInput.run(inputList);
+    updateStateBoundaryConditions();
+    daOutput.run(outputList);
+}
+#endif
+
 void DASolver::calcJacTVecProduct(
     const word inputName,
     const word inputType,
@@ -1828,6 +1968,23 @@ void DASolver::calcJacTVecProduct(
     forAll(inputList, idxI)
     {
         inputList[idxI] = input[idxI];
+    }
+
+    if (daOptionPtr_->getOption<bool>("adjointUseGeometryCheckpoint")
+        && inputType == "volCoord"
+        && (outputType == "residual" || outputType == "function"))
+    {
+        this->calcJacTVecProductGeometryCheckpoint(
+            daInput(),
+            inputType,
+            daOutput(),
+            inputList,
+            outputList,
+            inputSize,
+            outputSize,
+            seed,
+            product);
+        return;
     }
 
     // reset tape

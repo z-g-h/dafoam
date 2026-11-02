@@ -6,6 +6,8 @@ DAOption/DAOption.C
 
 DAUtility/DAUtility.C
 
+DACheckpoint/DAGeometryCheckpoint.C
+
 DAColoring/DAColoring.C
 
 DAField/DAField.C

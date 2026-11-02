@@ -129,6 +129,21 @@ protected:
     /// check whether the primal fails based on residual and regression fail flag
     label checkPrimalFailure();
 
+#ifdef CODI_ADR
+    /// Compute a volume-coordinate transpose product with a geometry
+    /// checkpoint so the output and mesh operations do not share one tape.
+    void calcJacTVecProductGeometryCheckpoint(
+        DAInput& daInput,
+        const word inputType,
+        DAOutput& daOutput,
+        scalarList& inputList,
+        scalarList& outputList,
+        const label nRegisteredInputs,
+        const label nRegisteredOutputs,
+        const double* seed,
+        double* product);
+#endif
+
     /// reduce the connectivity level for Jacobian connectivity mat
     void reduceStateResConLevel(
         const dictionary& maxResConLv4JacPCMat,
@@ -148,7 +163,7 @@ protected:
 
     /// primal initial residual tolerance. this will be used when primalMinResOption.dynAdjustTol is activate
     scalar dynPrimalMinResTol_ = 0.0;
-    
+
     /// the function std tolerance
     scalar primalFuncStdTol_ = -1.0;
 
@@ -446,13 +461,13 @@ public:
     /// control to get the initial residual when dynAdjustTol is activated
     void setupDynAdjustPrimalResidual(
         const SolverPerformance<scalar>& solverP,
-        const Time & runTime,
+        const Time& runTime,
         const word varName);
 
     /// control to get the initial residual when dynAdjustTol is activated
     void setupDynAdjustPrimalResidual(
         const SolverPerformance<vector>& solverP,
-        const Time & runTime,
+        const Time& runTime,
         const word varName);
 
     /// calculate the function std
